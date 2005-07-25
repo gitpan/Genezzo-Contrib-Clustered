@@ -16,7 +16,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 our $init_done;
 
@@ -498,7 +498,11 @@ if(0){
 }else{
     # FIXME super hack -- need global $Genezzo::Dict::the_dict, above,
     # to get gnz_home, etc.  for now hard code
-    $full_filename = "$ENV{HOME}/gnz_home/ts/undo.und";
+    if(getUseRaw()){
+	$full_filename = "/dev/raw/raw1";
+    }else{
+	$full_filename = "$ENV{HOME}/gnz_home/ts/undo.und";
+    }
 }
 
     $undo_file = new IO::File "+<$full_filename"
@@ -660,7 +664,7 @@ with this module.
 =over 4
 
 =item ReadBlock
-y
+
  Wraps Genezzo::BufCa::BCFile::ReadBlock
 
 =item DirtyBlock
@@ -683,7 +687,11 @@ y
 
 =head1 LIMITATIONS
 
-  No Distrubuted/clustered functionality today.  Still single machine, single process, single user, single threaded.
+  No Distrubuted/clustered functionality today.  Still single machine, 
+  single process, single user, single threaded.
+
+  This is pre-alpha software; don't use it to store any data you hope
+  to see again!
 
 =head1 AUTHOR
 

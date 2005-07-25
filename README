@@ -1,16 +1,14 @@
 Genezzo-Contrib-Clustered version 0.01
 ======================================
 
-The README is used to introduce the module and provide instructions on
-how to install the module, any machine dependencies it may have (for
-example C compilers and installed libraries) and any other information
-that should be provided before the module is installed.
+Shared data cluster support for Genezzo
 
-A README file is required for CPAN modules since CPAN extracts the
-README file from a module distribution so that people browsing the
-archive can use it get an idea of the modules uses. It is usually a
-good idea to provide version information here so that people can
-decide whether fixes for the module are worth downloading.
+Basic routines inside Genezzo are overridden via Havok SysHooks.  Overridden
+routines will (eventually) provide support for shared data clusters.  Routines
+will provide transactions, distributed locking, undo and recovery.  Today
+these routines support a single-user single-threaded database, and provide
+basic transactional commit and rollback via undo.  Locking routines are
+currently stubs.
 
 INSTALLATION
 
@@ -21,6 +19,24 @@ To install this module type the following:
    make test
    make install
 
+Note tests fail if prepared Genezzo database doesn't already exist.
+
+To prepare for use of Genezzo::Clustered
+
+  ./genprepundo.pl
+  gendba.pl
+  >@havok.sql
+  >@syshook.sql
+  >@clustered.sql
+
+LIMITATIONS
+
+  No Distrubuted/clustered functionality today.  Still single machine, 
+  single process, single user, single threaded.
+
+  This is pre-alpha software; don't use it to store any data you hope
+  to see again!
+
 DEPENDENCIES
 
 This module requires these other modules and libraries:
@@ -30,12 +46,20 @@ This module requires these other modules and libraries:
 
 COPYRIGHT AND LICENCE
 
-Put the correct copyright and licence information here.
+    Copyright (C) 2005 by Eric Rollins.  All rights reserved.
 
-Copyright (C) 2005 by erollins
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    any later version.
 
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.8.4 or,
-at your option, any later version of Perl 5 you may have available.
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
 
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
+Address bug reports and comments to rollins@acm.org
