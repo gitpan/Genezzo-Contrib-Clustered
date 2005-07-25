@@ -1,0 +1,9 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Genezzo-Contrib-Clustered.t
+lib/Genezzo/Contrib/Clustered/Clustered.pm
+lib/Genezzo/Contrib/Clustered/clustered.sql
+lib/Genezzo/Contrib/Clustered/genprepundo.pl
+META.yml                                 Module meta-data (added by MakeMaker)
