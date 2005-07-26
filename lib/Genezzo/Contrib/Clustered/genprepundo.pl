@@ -8,7 +8,6 @@
 #use strict;
 use Genezzo::GenDBI;
 use Getopt::Long;
-use Pod::Usage;
 use Data::Dumper;
 use Carp;
 use Genezzo::Dict;
@@ -16,6 +15,85 @@ use Genezzo::Block::RDBlock;
 use Genezzo::Block::Std;
 use FreezeThaw;
 use Genezzo::Util;
+use Pod::Usage;
+
+=head1 NAME
+
+genprepundo.pl - Prepare undo file for Clustered Genezzo
+
+=head1 SYNOPSIS
+
+B<genprepundo.pl> [options]
+
+Options:
+
+    -help            brief help message
+    -man             full documentation
+    -gnz_home        supply a directory for the gnz_home
+    -undo_filename   name of the undo file
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-help>
+
+    Print a brief help message and exits.
+
+=item B<-man>
+    
+    Prints the manual page and exits.
+
+=item B<-gnz_home>
+    
+    Supply the location for the gnz_home installation.  If 
+    specified, it overrides the GNZ_HOME environment variable.
+
+=item B<-undo_filename>
+
+    Supply the name of the undo file.  If not specified, it
+    defaults to undo.und for file system devices.  It must
+    be specified for raw devices.
+
+=back
+
+=head1 DESCRIPTION
+
+  Creates or re-initializes undo file under GNZ_HOME.  By default
+  file is named undo.und.  File header contains basic information about
+  all other files in Genezzo installation.  genprepundo.pl must
+  be run whenever a new file is added to the Genezzo installation.
+
+=head1 TODO
+  
+  Expand command-line argument support (numprocesses, blocks_per_process)
+
+=head1 AUTHOR
+
+  Eric Rollins, rollins@acm.org
+
+=head1 COPYRIGHT AND LICENSE
+
+  Copyright (c) 2005 Eric Rollins.  All rights reserved.
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  any later version.
+
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+  Address bug reports and comments to rollins@acm.org
+
+=cut
 
 our $GZERR = sub {
     my %args = (@_);
@@ -74,11 +152,9 @@ BEGIN {
     my %defs = ();      # list of --define key=value
 
     GetOptions(
-               'help|?' => \$help, man => \$man, init => \$init,
-               shutdown => \$shutdown,
+               'help|?' => \$help, man => \$man, 
                'gnz_home=s' => \$gnz_home,
-	       'undo_filename=s' => \$undo_filename,
-               'define=s'   => \%defs)
+	       'undo_filename=s' => \$undo_filename)
         or pod2usage(2);
 
     $glob_id = "Genezzo Version $Genezzo::GenDBI::VERSION - $Genezzo::GenDBI::RELSTATUS $Genezzo::GenDBI::RELDATE\n\n"; 
@@ -272,51 +348,4 @@ for($i = 0; $i < $glob_procs; $i++){
 close $fh;
 
 __DATA__
-
-=head1 NAME
-
-genprepundo.pl - Prepare undo file for Clustered Genezzo
-
-=head1 SYNOPSIS
-
-  genprepundo.pl
-
-=head1 DESCRIPTION
-
-  Creates or re-initializes undo file under GNZ_HOME.  By default
-  file is named undo.und.  File header contains basic information about
-  all other files in Genezzo installation.  genprepundo.pl must
-  be run whenever a new file is added to the Genezzo installation.
-
-=head1 TODO
-  
-  Fix, test, verify command-line argument support (filename, numprocesses, 
-  blocks_per_process)
-
-=head1 AUTHOR
-
-  Eric Rollins, rollins@acm.org
-
-=head1 COPYRIGHT AND LICENSE
-
-  Copyright (c) 2005 Eric Rollins.  All rights reserved.
-
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation; either version 2 of the License, or
-  any later version.
-
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-
-  Address bug reports and comments to rollins@acm.org
-
-=cut
 

@@ -16,7 +16,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 our $init_done;
 
@@ -499,7 +499,7 @@ if(0){
     # FIXME super hack -- need global $Genezzo::Dict::the_dict, above,
     # to get gnz_home, etc.  for now hard code
     if(getUseRaw()){
-	$full_filename = "/dev/raw/raw1";
+	$full_filename = "/dev/raw/raw2";
     }else{
 	$full_filename = "$ENV{HOME}/gnz_home/ts/undo.und";
     }
@@ -592,7 +592,8 @@ Genezzo::Contrib::Clustered::Clustered - Shared data cluster support for Genezzo
 
 =head1 SYNOPSIS
 
-  ./genprepundo.pl
+  genprepundo.pl
+
   gendba.pl
   >@havok.sql
   >@syshook.sql
@@ -615,24 +616,25 @@ All blocks are $Genezzo::Block::Std::DEFBLOCKSIZE;
 
 Frozen data structure stored via Genezzo::Block::RDBlock->HPush()
 
-{
+  {
      "procs" => $processes,
      "blocks_per_proc" => $blocks_per_process,
      "files" => {
 	 per fileidx =>
 	 { fileidx, filename, blocksize, numblocks, hdrsize }
      }
-};
+  };
 
 =head3 Process Status Block : block 1 - $processes+1
 
-----------processid(10)---------------- to end of block
+ ----------processid(10)---------------- to end of block
 
-1st character is status
-- = clear
-C = committed
-R = rolledback
-P = pending
+ 1st character is status:
+
+    - = clear
+    C = committed
+    R = rolledback
+    P = pending
 
 =head3 Undo Blocks : array of $blocks_per_process * $processes
 
