@@ -64,6 +64,8 @@ Options:
   all other files in Genezzo installation.  genprepundo.pl must
   be run whenever a new file is added to the Genezzo installation.
 
+  Undo file format is documented in Clustered.pm.
+
 =head1 TODO
   
   Expand command-line argument support (numprocesses, blocks_per_process)
@@ -179,6 +181,7 @@ if(!defined($dbh)){
 $dbh->do("startup"); # start the database
 
 #-----------------------------------------------------------------
+# locate home
 $stmt =    "select pref_value from _pref1 where pref_key='home'";
 
 $sth = $dbh->prepare($stmt);
@@ -210,7 +213,8 @@ if ($glob_undo_filename eq ""){
     }
 }
 
-#-----------------------------------------------------------
+#-----------------------------------------------------------------
+# read per-file info
 my $stmt =    "select fileidx, filename, blocksize, numblocks from _tsfiles";
 
 my $sth = $dbh->prepare($stmt);
@@ -262,10 +266,8 @@ while(1)
     $data->{files}->{$ggg->{fileidx}} = $ggg;
 }
 
-#print Dumper ($data);
-
+#-----------------------------------------------------------------
 # use both insert and update to set undo_filename
-
 $stmt = 
   "update _pref1 set pref_value='$glob_undo_filename' where pref_key='undo_filename'";
 
@@ -310,6 +312,8 @@ if($pref_home eq "/dev/raw"){
     $full_filename = "$pref_home/ts/$glob_undo_filename";
 }
 
+#-----------------------------------------------------------------
+# store per-file info in file header block
 $frozen_data = FreezeThaw::freeze $data;
 
 # construct an empty byte buffer
@@ -331,7 +335,8 @@ gnz_write ($fh, $buff, $blocksize)
     == $blocksize
     or die "bad write - file $full_filename : $! \n";
 
-# mark process status block as no outstanding transaction
+#-----------------------------------------------------------------
+# mark process status block for each process as no outstanding transaction
 my $buff;
 my $i;
 for($i = 0; $i < $glob_procs; $i++){
@@ -346,6 +351,4 @@ for($i = 0; $i < $glob_procs; $i++){
 }
 
 close $fh;
-
-__DATA__
 

@@ -3,9 +3,10 @@ Genezzo-Contrib-Clustered
 
 Shared data cluster support for Genezzo
 
-Basic routines inside Genezzo are overridden via Havok SysHooks.  Overridden
+Genezzo is an extensible database with SQL and DBI.  It is written in Perl.
+Basic routines inside Genezzo are overridden via Havok SysHooks.  Override
 routines will (eventually) provide support for shared data clusters.  Routines
-will provide transactions, distributed locking, undo and recovery.  Today
+will provide transactions, distributed locking, undo, and recovery.  Today
 these routines support a single-user single-threaded database, and provide
 basic transactional commit and rollback via undo.  Locking routines are
 currently stubs.
@@ -24,6 +25,7 @@ Note tests fail if prepared Genezzo database doesn't already exist.
 To prepare for use of Genezzo::Clustered
 
   ./genprepundo.pl
+
   gendba.pl
   >@havok.sql
   >@syshook.sql
@@ -31,7 +33,7 @@ To prepare for use of Genezzo::Clustered
 
 LIMITATIONS
 
-  No Distrubuted/clustered functionality today.  Still single machine, 
+  No Distributed/clustered functionality today.  Still single machine, 
   single process, single user, single threaded.
 
   This is pre-alpha software; don't use it to store any data you hope

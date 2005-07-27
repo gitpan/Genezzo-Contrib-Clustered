@@ -16,7 +16,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 our $init_done;
 
@@ -151,9 +151,7 @@ sub Commit
     #$gtxLock->unlockAll();
 
     ResetUndo();
-
     WriteTransactionState($clear_buff);
-
     $cl_ctx->{have_begin_trans} = 0;
 
     return $ret;
@@ -177,17 +175,20 @@ sub Rollback
     Rollback_Internal();
 
     ResetUndo();
-
     WriteTransactionState($clear_buff);
+    $cl_ctx->{have_begin_trans} = 0;
 
     #my $gtxLock = $cl_ctx->{gtxLock};
     #$gtxLock->unlockAll();
 
-    $cl_ctx->{have_begin_trans} = 0;
-
     # currently this generates lots of writes, and another transaction
     # which is never committed.  Investigate.
     my $ret = &$Rollback_Hook(@_);
+
+    # for now, we never want to rollback this extra info, so
+    ResetUndo();
+    WriteTransactionState($clear_buff);
+    $cl_ctx->{have_begin_trans} = 0;
 
     return $ret;
 }
@@ -260,6 +261,7 @@ sub Rollback_Internal()
 }
 
 
+# copies before image of block to end of file
 # direction TO:    copy from body to tail
 #           FROM:  copy from tail to body
 sub CopyBlockToOrFromTail
@@ -360,6 +362,7 @@ sub ResetUndo
 
 sub BeginTransaction
 {
+    whisper "Genezzo::Contrib::Clustered::BeginTransaction\n";
     # increment transaction id
     $cl_ctx->{tx_id} = $cl_ctx->{tx_id} + 1;
     # mark transaction pending
@@ -390,7 +393,7 @@ sub CreateUndoBlock
 
 sub AddAndWriteUndo
 {
-whisper "AddAndWriteUndo\n";
+    whisper "AddAndWriteUndo\n";
     my ($fileno, $blockno) = @_;
     my $row = { "f" => $fileno,
                 "b" => $blockno };
@@ -511,7 +514,8 @@ if(0){
     #construct an empty byte buffer
     my $buff;
 
-    Genezzo::Util::gnz_read($undo_file, $buff, $undo_blocksize) == $undo_blocksize
+    Genezzo::Util::gnz_read($undo_file, $buff, $undo_blocksize) 
+        == $undo_blocksize
     	or die "bad read - file $full_filename: $!\n";
     
     my %tied_hash = ();
@@ -546,11 +550,12 @@ if(0){
 	Rollback_Internal();
 	# what about restarting???
 	print "PLEASE TYPE ROLLBACK COMMAND\n";
-	print "FOLLOWED BY COMMIT COMMAND\n";
+	# print "FOLLOWED BY COMMIT COMMAND\n";
 	# note here no rollback work will occur, but system will restart
 	# from disk (I hope)
         # currently wrong, actually lots of work is done and leaves open tx
         # that needs committing
+	# but it is ignored since we mark 'clear' at end
     }elsif($tx_state eq $committed_code){
 	# need to clear undo proc id in blocks...
     }
@@ -573,9 +578,11 @@ if(0){
     whisper "end init undo\n";
 
     $cl_ctx->{tx_id} = 1;	# TODO:  add timestamp 
+    WriteTransactionState($clear_buff);
     $cl_ctx->{have_begin_trans} = 0;
 
     $init_done = 1;
+    print "Genezzo::Contrib::Clustered installed\n";
 }
 
 BEGIN
@@ -601,18 +608,21 @@ Genezzo::Contrib::Clustered::Clustered - Shared data cluster support for Genezzo
 
 =head1 DESCRIPTION
 
-Basic routines inside Genezzo are overridden via Havok SysHooks.  Overridden
+Genezzo is an extensible database with SQL and DBI.  It is written in Perl.
+Basic routines inside Genezzo are overridden via Havok SysHooks.  Override
 routines will (eventually) provide support for shared data clusters.  Routines
-will provide transactions, distributed locking, undo and recovery.  Today
+will provide transactions, distributed locking, undo, and recovery.  Today
 these routines support a single-user single-threaded database, and provide
 basic transactional commit and rollback via undo.  Locking routines are
 currently stubs.
 
 =head2 Undo File Format
 
-All blocks are $Genezzo::Block::Std::DEFBLOCKSIZE;
+All blocks are $Genezzo::Block::Std::DEFBLOCKSIZE 
 
-=head3 Header : block 0 
+=head3 Header 
+  
+  (block 0)
 
 Frozen data structure stored via Genezzo::Block::RDBlock->HPush()
 
@@ -625,7 +635,9 @@ Frozen data structure stored via Genezzo::Block::RDBlock->HPush()
      }
   };
 
-=head3 Process Status Block : block 1 - $processes+1
+=head3 Process Status Block 
+
+  (block 1 to $processes+1)
 
  ----------processid(10)---------------- to end of block
 
@@ -636,7 +648,9 @@ Frozen data structure stored via Genezzo::Block::RDBlock->HPush()
     R = rolledback
     P = pending
 
-=head3 Undo Blocks : array of $blocks_per_process * $processes
+=head3 Undo Blocks 
+
+  (array of $blocks_per_process * $processes)
 
 These are written paired (for recoverability), so only half number is 
 actually available.
@@ -689,7 +703,7 @@ with this module.
 
 =head1 LIMITATIONS
 
-  No Distrubuted/clustered functionality today.  Still single machine, 
+  No Distributed/clustered functionality today.  Still single machine, 
   single process, single user, single threaded.
 
   This is pre-alpha software; don't use it to store any data you hope

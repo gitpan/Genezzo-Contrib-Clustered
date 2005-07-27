@@ -1,4 +1,7 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.04  Tue Jul 26 23:00:00 2005
+        transactional fixes
+	documentation fixes
 
 0.03  Mon Jul 25 21:00:00 2005
 	documentation fixes
