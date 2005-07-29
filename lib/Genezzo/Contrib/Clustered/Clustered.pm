@@ -16,7 +16,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 our $init_done;
 
@@ -464,7 +464,7 @@ sub _init
         return;
     }
 
-    whisper "Genezzo::Contrib::Clustered::_init called here\n";
+    whisper "Genezzo::Contrib::Clustered::_init called\n";
 
     $cl_ctx = {};
     $inReadBlock = 0;
@@ -581,13 +581,13 @@ if(0){
     WriteTransactionState($clear_buff);
     $cl_ctx->{have_begin_trans} = 0;
 
+    whisper "Genezzo::Contrib::Clustered::_init finished\n";
     $init_done = 1;
-    print "Genezzo::Contrib::Clustered installed\n";
 }
 
 BEGIN
 {
-    _init();
+    print "Genezzo::Contrib::Clustered will be installed\n"; 
 }
 
 1;
@@ -631,7 +631,7 @@ Frozen data structure stored via Genezzo::Block::RDBlock->HPush()
      "blocks_per_proc" => $blocks_per_process,
      "files" => {
 	 per fileidx =>
-	 { fileidx, filename, blocksize, numblocks, hdrsize }
+	 { fileidx, filename, full_filename, blocksize, numblocks, hdrsize }
      }
   };
 
@@ -708,6 +708,14 @@ with this module.
 
   This is pre-alpha software; don't use it to store any data you hope
   to see again!
+
+=head1 SEE ALSO
+
+For more information, please visit the Genezzo homepage 
+at L<http://www.genezzo.com>
+
+also L<http://eric_rollins.home.mindspring.com/genezzo/ClusteredGenezzoDesign.html>
+and L<http://eric_rollins.home.mindspring.com/genezzo/cluster.html>
 
 =head1 AUTHOR
 

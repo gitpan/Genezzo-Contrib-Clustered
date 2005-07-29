@@ -20,8 +20,6 @@ To install this module type the following:
    make test
    make install
 
-Note tests fail if prepared Genezzo database doesn't already exist.
-
 To prepare for use of Genezzo::Clustered
 
   ./genprepundo.pl
@@ -45,6 +43,15 @@ This module requires these other modules and libraries:
 
   Genezzo
   FreezeThaw
+
+SEE ALSO
+
+  For more information, please visit the Genezzo homepage
+  at http://www.genezzo.com
+
+  also 
+  http://eric_rollins.home.mindspring.com/genezzo/ClusteredGenezzoDesign.html
+  http://eric_rollins.home.mindspring.com/genezzo/cluster.html
 
 COPYRIGHT AND LICENCE
 
