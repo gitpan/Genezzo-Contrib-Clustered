@@ -158,8 +158,6 @@ See GLockDLM for function descriptions.
 
 =head1 FUNCTIONS
 
-=back
-
 =head2 EXPORT
 
 =head1 LIMITATIONS

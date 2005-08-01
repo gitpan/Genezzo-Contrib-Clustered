@@ -91,6 +91,8 @@ sub unlockAll{
   return 1;
 }
 
+1;
+
 __DATA__
 
 =head1 NAME
@@ -104,8 +106,6 @@ Genezzo::Contrib::Clustered::GLock::GLock - Generic locking for Genezzo
 Retains hash of all locks held by transaction.
 
 =head1 FUNCTIONS
-
-=back
 
 =head2 EXPORT
 

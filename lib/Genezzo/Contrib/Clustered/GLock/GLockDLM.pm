@@ -61,7 +61,7 @@ Genezzo::Contrib::Clustered::GLock::GLockDLM - OpenDLM locking implementation fo
 
 =head1 DESCRIPTION
 
-    Provides Perl wrappers to basic OpenDLM C functions.
+Provides Perl wrappers to basic OpenDLM C functions.
 
 =head1 FUNCTIONS
 
@@ -90,7 +90,7 @@ dlm_lock, dlm_promote, dlm_unlock
 
 =head1 LIMITATIONS
 
- Relies on Perl Inline::C module.  Requires OpenDLM be installed.
+Relies on Perl Inline::C module.  Requires OpenDLM be installed.
 
 =head1 AUTHOR
 
@@ -98,7 +98,7 @@ Eric Rollins, rollins@acm.org
 
 =head1 SEE ALSO
 
-L<perl(1)>.
+L<http://opendlm.sourceforge.net/docs.php>.
 
 Copyright (c) 2005 Eric Rollins.  All rights reserved.
 

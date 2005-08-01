@@ -16,7 +16,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 our $init_done;
 
@@ -681,33 +681,33 @@ with this module.
 
 =item ReadBlock
 
- Wraps Genezzo::BufCa::BCFile::ReadBlock
+Wraps Genezzo::BufCa::BCFile::ReadBlock
 
 =item DirtyBlock
 
- Wraps Genezzo::BufCa::DirtyScalar::STORE
+Wraps Genezzo::BufCa::DirtyScalar::STORE
 
 =item Commit
 
- Wraps Genezzo::GenDBI::Kgnz_Commit
+Wraps Genezzo::GenDBI::Kgnz_Commit
 
 =item Rollback
 
- Wraps Genezzo::GenDBI::Kgnz_Rollback
+Wraps Genezzo::GenDBI::Kgnz_Rollback
 
 =back
 
 =head2 EXPORT
 
-  none
+none
 
 =head1 LIMITATIONS
 
-  No Distributed/clustered functionality today.  Still single machine, 
-  single process, single user, single threaded.
+No Distributed/clustered functionality today.  Still single machine, 
+single process, single user, single threaded.
 
-  This is pre-alpha software; don't use it to store any data you hope
-  to see again!
+This is pre-alpha software; don't use it to store any data you hope
+to see again!
 
 =head1 SEE ALSO
 
