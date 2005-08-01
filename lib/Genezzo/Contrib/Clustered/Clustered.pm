@@ -9,14 +9,14 @@ package Genezzo::Contrib::Clustered::Clustered;
 use strict;
 use warnings;
 use Genezzo::Util;
-#use Genezzo::Contrib::Clustered::GLock::GTXLock;
+use Genezzo::Contrib::Clustered::GLock::GTXLock;
 use Data::Dumper;
 use FreezeThaw;
 use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 our $init_done;
 
@@ -62,9 +62,9 @@ sub ReadBlock
         _init();
     }
 
-    #my $gtxLock = $cl_ctx->{gtxLock};
+    my $gtxLock = $cl_ctx->{gtxLock};
     # add in fnum later...
-    #$gtxLock->lock(lock => $bnum, shared => 1);
+    $gtxLock->lock(lock => $bnum, shared => 1);
     
     # avoid processing DirtyBlock during read
     $inReadBlock = 1;
@@ -110,9 +110,9 @@ sub DirtyBlock
 	}
 
         if($dirty == 0){
-            #my $gtxLock = $cl_ctx->{gtxLock};
+            my $gtxLock = $cl_ctx->{gtxLock};
 	    # add in fnum later...
-	    #$gtxLock->lock(lock => $h->{blocknum}, shared => 0);
+	    $gtxLock->lock(lock => $h->{blocknum}, shared => 0);
 
 	    CopyBlockToOrFromTail($h->{filenum}, $h->{blocknum}, "TO");
 	    AddAndWriteUndo($h->{filenum}, $h->{blocknum});
@@ -147,8 +147,8 @@ sub Commit
 
     # release all blocks in buffer cache (how?)
 
-    #my $gtxLock = $cl_ctx->{gtxLock};
-    #$gtxLock->unlockAll();
+    my $gtxLock = $cl_ctx->{gtxLock};
+    $gtxLock->unlockAll();
 
     ResetUndo();
     WriteTransactionState($clear_buff);
@@ -178,8 +178,8 @@ sub Rollback
     WriteTransactionState($clear_buff);
     $cl_ctx->{have_begin_trans} = 0;
 
-    #my $gtxLock = $cl_ctx->{gtxLock};
-    #$gtxLock->unlockAll();
+    my $gtxLock = $cl_ctx->{gtxLock};
+    $gtxLock->unlockAll();
 
     # currently this generates lots of writes, and another transaction
     # which is never committed.  Investigate.
@@ -540,8 +540,8 @@ if(0){
     # hashed on fileno
     $cl_ctx->{open_files} = {};
 
-    #my $gtxLock = Genezzo::Contrib::Clustered::GLock::GTXLock->new();
-    #$cl_ctx->{gtxLock} = $gtxLock;
+    my $gtxLock = Genezzo::Contrib::Clustered::GLock::GTXLock->new();
+    $cl_ctx->{gtxLock} = $gtxLock;
 
     my $tx_state = ReadTransactionState();
 

@@ -1,4 +1,7 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.07  Sun Jul 31 23:00:00 2005
+	Added OpenDLM-based locking support
+
 0.06  Sun Jul 31 20:45:00 2005
 	added ClusteredGenezzoDesign.html design document
 	added message to genprepundo.pl
