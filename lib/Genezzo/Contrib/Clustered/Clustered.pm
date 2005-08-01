@@ -16,7 +16,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 our $init_done;
 

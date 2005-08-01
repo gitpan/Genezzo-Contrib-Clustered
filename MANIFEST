@@ -2,6 +2,7 @@ Changes
 Makefile.PL
 MANIFEST
 README
+ClusteredGenezzoDesign.html
 t/Genezzo-Contrib-Clustered.t
 lib/Genezzo/Contrib/Clustered/Clustered.pm
 lib/Genezzo/Contrib/Clustered/clustered.sql

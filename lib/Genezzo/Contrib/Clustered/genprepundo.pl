@@ -166,7 +166,7 @@ BEGIN {
 
     setinit($init, $gnz_home, $shutdown, \%defs, $undo_filename);
 
-    print "loading...\n" ;
+    print "beginning initialization...\n" ;
 }
 
 my $dbh = Genezzo::GenDBI->connect($glob_gnz_home,
@@ -351,4 +351,6 @@ for($i = 0; $i < $glob_procs; $i++){
 }
 
 close $fh;
+
+print "finished initialization of $full_filename.\n" ;
 

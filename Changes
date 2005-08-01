@@ -1,4 +1,8 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.06  Sun Jul 31 20:45:00 2005
+	added ClusteredGenezzoDesign.html design document
+	added message to genprepundo.pl
+
 0.05  Thu Jul 28 22:00:00 2005
 	fix make test
 	documentation additions
