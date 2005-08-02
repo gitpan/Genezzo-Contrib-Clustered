@@ -91,6 +91,7 @@ dlm_lock, dlm_promote, dlm_unlock
 =head1 LIMITATIONS
 
 Relies on Perl Inline::C module.  Requires OpenDLM be installed.
+Currently terminates program when deadlock detected.
 
 =head1 AUTHOR
 

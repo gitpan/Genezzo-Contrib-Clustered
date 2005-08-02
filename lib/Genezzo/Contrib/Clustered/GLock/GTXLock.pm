@@ -101,11 +101,33 @@ Genezzo::Contrib::Clustered::GLock::GLock - Generic locking for Genezzo
 
 =head1 SYNOPSIS
 
+   my $gtxLock = GTXLock->new();
+   $gtxLock->lock(lock => $bnum, shared => 1);
+   $gtxLock->unlockAll();
+
 =head1 DESCRIPTION
 
 Retains hash of all locks held by transaction.
 
 =head1 FUNCTIONS
+
+=over 3
+
+=item new
+
+Creates GTXLock
+
+=item lock
+
+=item lock (lock => NAME, shared => SHARED)
+
+Locks lock with name NAME.  Shared if SHARED=1, otherwise Exclusive (default).
+Uses a blocking lock call.  If lock is currently held Shared promotes to 
+Exclusive.  Adds lock to hash of all locks held by object.
+
+=item unlockall
+
+Unlocks all locks held by object.
 
 =head2 EXPORT
 
@@ -114,10 +136,6 @@ Retains hash of all locks held by transaction.
 =head1 AUTHOR
 
 Eric Rollins, rollins@acm.org
-
-=head1 SEE ALSO
-
-L<perl(1)>.
 
 Copyright (c) 2005 Eric Rollins.  All rights reserved.
 

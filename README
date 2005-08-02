@@ -37,6 +37,9 @@ LIMITATIONS
   This is pre-alpha software; don't use it to store any data you hope
   to see again!
 
+  While OpenDLM locking is now working, undo is still single process
+  (all processes use undo processid 1, so state and undo is overwritten).
+
 DEPENDENCIES
 
 This module requires these other modules and libraries:

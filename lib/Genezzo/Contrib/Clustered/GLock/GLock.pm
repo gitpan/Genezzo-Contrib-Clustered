@@ -151,12 +151,38 @@ Genezzo::Contrib::Clustered::GLock::GLock - Generic locking for Genezzo
 
 =head1 SYNOPSIS
 
+    $curLock = new GLock(lock => $lockName, block => 1);
+    $curLock->lock(shared => $shared);
+    $curLock->promote();
+    $curLock->unlock();
+
 =head1 DESCRIPTION
 
-Basic locking for Genezzo.  Available implementations include OpenDLM.
-See GLockDLM for function descriptions.
+Basic locking for Genezzo.  Available implementations include NONE and OpenDLM.
 
 =head1 FUNCTIONS
+
+=over 4
+
+=item new (lock => NAME, block => BLOCKING)
+
+Creates new lock with name NAME.  Blocking if BLOCKING=1 (default).
+Depending on implementation, new or following lock() may be blocking.
+
+=item lock (shared => SHARED)
+
+Locks lock.  Shared if SHARED=1, otherwise Exclusive (default).
+Returns undef for failure.
+
+=item promote
+
+Promotes lock from Shared to Exclusive.  Returns undef for failure.
+
+=item unlock
+
+Unlocks lock. 
+
+=back
 
 =head2 EXPORT
 
@@ -168,10 +194,6 @@ from somewhere else.
 =head1 AUTHOR
 
 Eric Rollins, rollins@acm.org
-
-=head1 SEE ALSO
-
-L<perl(1)>.
 
 Copyright (c) 2005 Eric Rollins.  All rights reserved.
 

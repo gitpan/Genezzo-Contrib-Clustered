@@ -1,4 +1,7 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.09  Mon Aug 01 11:55:00 2005
+	documentation fixes
+
 0.08  Mon Aug 01 08:00:00 2005
 	Added 1; to GTXLock
 	documentation fixes

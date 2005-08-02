@@ -16,7 +16,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 our $init_done;
 
@@ -708,6 +708,9 @@ single process, single user, single threaded.
 
 This is pre-alpha software; don't use it to store any data you hope
 to see again!
+
+While OpenDLM locking is now working, undo is still single process
+(all processes use undo processid 1, so state and undo is overwritten).
 
 =head1 SEE ALSO
 
