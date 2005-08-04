@@ -97,7 +97,7 @@ __DATA__
 
 =head1 NAME
 
-Genezzo::Contrib::Clustered::GTXLock::GTXLock - Transaction locking for Genezzo
+Genezzo::Contrib::Clustered::GLock::GTXLock - Transaction locking for Genezzo
 
 =head1 SYNOPSIS
 
