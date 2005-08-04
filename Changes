@@ -1,4 +1,7 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.11  Thu Aug 04 00:20:00 2005
+	pod fixes
+
 0.10  Wed Aug 03 19:45:00 2005
 	use SVR lock to allocate unique processid at startup
 	fix strictness of genprepundo.pl

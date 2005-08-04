@@ -17,7 +17,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 our $init_done;
 
@@ -734,8 +734,11 @@ and necessary cleanup is not detected.
 =head1 SEE ALSO
 
 L<http://www.genezzo.com>
+
 L<http://eric_rollins.home.mindspring.com/genezzo/ClusteredGenezzoDesign.html>
+
 L<http://eric_rollins.home.mindspring.com/genezzo/cluster.html>
+
 L<http://opendlm.sourceforge.net/>
 
 =head1 AUTHOR
