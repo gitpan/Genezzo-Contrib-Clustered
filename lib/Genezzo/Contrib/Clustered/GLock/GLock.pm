@@ -152,7 +152,7 @@ Genezzo::Contrib::Clustered::GLock::GLock - Generic locking for Genezzo
 =head1 SYNOPSIS
 
     $curLock = new GLock(lock => $lockName, block => 1);
-    $curLock->lock(shared => $shared);
+    $curLock->lock(shared => 0);
     $curLock->promote();
     $curLock->unlock();
 
@@ -183,8 +183,6 @@ Promotes lock from Shared to Exclusive.  Returns undef for failure.
 Unlocks lock. 
 
 =back
-
-=head2 EXPORT
 
 =head1 LIMITATIONS
 

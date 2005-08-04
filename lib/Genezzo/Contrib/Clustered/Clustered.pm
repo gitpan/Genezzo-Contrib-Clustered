@@ -10,13 +10,14 @@ use strict;
 use warnings;
 use Genezzo::Util;
 use Genezzo::Contrib::Clustered::GLock::GTXLock;
+use Genezzo::Contrib::Clustered::GLock::GLock;
 use Data::Dumper;
 use FreezeThaw;
 use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 our $init_done;
 
@@ -203,7 +204,7 @@ sub Rollback_Internal()
     my $tx_id;
 
     for($undo_blockid = 0; 
-	$undo_blockid < ($cl_ctx->{data}->{blocks_per_proc})/2;
+	$undo_blockid < ($cl_ctx->{undoHeader}->{blocks_per_proc})/2;
 	$undo_blockid++)
     {
         whisper "rollback internal undo_blockid = $undo_blockid\n";
@@ -271,7 +272,8 @@ sub CopyBlockToOrFromTail
     whisper "CopyBlockToOrFromTail $direction\n";
 
     my $fh = $cl_ctx->{open_files}->{$fileno};
-    my $full_filename = $cl_ctx->{data}->{files}->{$fileno}->{full_filename};
+    my $full_filename = 
+	$cl_ctx->{undoHeader}->{files}->{$fileno}->{full_filename};
 
     if(!defined($fh)){
         whisper "opening $fileno\n";
@@ -282,9 +284,11 @@ sub CopyBlockToOrFromTail
 	$cl_ctx->{open_files}->{$fileno} = $fh;
     }
 
-    my $file_blocksize = $cl_ctx->{data}->{files}->{$fileno}->{blocksize};
-    my $file_numblocks = $cl_ctx->{data}->{files}->{$fileno}->{numblocks};
-    my $file_hdrsize = $cl_ctx->{data}->{files}->{$fileno}->{hdrsize};
+    my $file_blocksize = 
+	$cl_ctx->{undoHeader}->{files}->{$fileno}->{blocksize};
+    my $file_numblocks = 
+	$cl_ctx->{undoHeader}->{files}->{$fileno}->{numblocks};
+    my $file_hdrsize = $cl_ctx->{undoHeader}->{files}->{$fileno}->{hdrsize};
 
     my $src_offset;
     my $dst_offset;
@@ -412,9 +416,9 @@ sub AddAndWriteUndo
     $cl_ctx->{current_undo_blockid} = $cl_ctx->{current_undo_blockid} + 1;
     my $offset = $cl_ctx->{current_undo_blockid}*2;
 
-    if(($offset) >= ($cl_ctx->{data}->{blocks_per_proc}-1))
+    if(($offset) >= ($cl_ctx->{undoHeader}->{blocks_per_proc}-1))
     {
-        die("Undo Full:  undo offset $offset >= block_per_proc $cl_ctx->{data}->{blocks_per_proc} - 1\n");
+        die("Undo Full:  undo offset $offset >= block_per_proc $cl_ctx->{undoHeader}->{blocks_per_proc} - 1\n");
     }
 
     $newkey = $cl_ctx->{current_undo_block}->HPush($frozen_row);
@@ -427,8 +431,8 @@ sub WriteUndoBlock
     # note paired blocks means we multiply blockid by 2
     my $offset = $cl_ctx->{current_undo_blockid} * 2;
 
-    if($offset >= ($cl_ctx->{data}->{blocks_per_proc}-1)){
-        die("Undo Full:  undo offset $offset >= block_per_proc $cl_ctx->{data}->{blocks_per_proc} - 1\n");
+    if($offset >= ($cl_ctx->{undoHeader}->{blocks_per_proc}-1)){
+        die("Undo Full:  undo offset $offset >= block_per_proc $cl_ctx->{undoHeader}->{blocks_per_proc} - 1\n");
     }
     
     my $blk = ($cl_ctx->{proc_undo_blocknum} + $offset)*$undo_blocksize;
@@ -522,16 +526,37 @@ if(0){
     my $tie_val =
         tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff);
     
-    my $frozen_data = $tied_hash{1};
-    my ( $data ) = FreezeThaw::thaw $frozen_data;
-    $cl_ctx->{data} = $data;
+    my $frozen_undoHeader = $tied_hash{1};
+    my ( $undoHeader ) = FreezeThaw::thaw $frozen_undoHeader;
+    $cl_ctx->{undoHeader} = $undoHeader;
 
-    # TODO: read proc_num from somewhere later
-    $cl_ctx->{proc_num} = 0;
-    $cl_ctx->{proc_state_blocknum} = $cl_ctx->{proc_num} + 1;  # 1 for data
+    my $try_proc_num = 0;
+
+    # determine if this proc_num is free
+    while(1){
+	my $lockname = "SVR" . $try_proc_num;
+	my $curLock = 
+	    Genezzo::Contrib::Clustered::GLock::GLock->new(
+	        lock => $lockname, block => 0);
+	if(defined($curLock->lock(shared => 0))){
+	    last;  # obtained lock
+	}
+	
+	$try_proc_num++;
+
+	if($try_proc_num >= $cl_ctx->{undoHeader}->{procs}){
+	    Carp::croak("maximum processes exceeded");
+	}
+    }
+
+    $cl_ctx->{proc_num} = $try_proc_num;
+    print "Genezzo::Contrib::Clustered Assigned Process Number = $try_proc_num\n";
+ 
+    $cl_ctx->{proc_state_blocknum} = 
+	$cl_ctx->{proc_num} + 1;  # 1 for undoHeader
     $cl_ctx->{proc_undo_blocknum} = 
-        1 + $cl_ctx->{data}->{procs} + 
-	($cl_ctx->{data}->{blocks_per_proc} * $cl_ctx->{proc_num});
+        1 + $cl_ctx->{undoHeader}->{procs} + 
+	($cl_ctx->{undoHeader}->{blocks_per_proc} * $cl_ctx->{proc_num});
     InitConstBuff($committed_buff, $committed_code);
     InitConstBuff($rolledback_buff, $rolledback_code);
     InitConstBuff($pending_buff, $pending_code);
@@ -568,7 +593,7 @@ if(0){
     my $tmp_undo_blockid;
 
     for($tmp_undo_blockid = 0; 
-	$tmp_undo_blockid < ($cl_ctx->{data}->{blocks_per_proc}/2);
+	$tmp_undo_blockid < ($cl_ctx->{undoHeader}->{blocks_per_proc}/2);
 	$tmp_undo_blockid++)
     {
 	$cl_ctx->{current_undo_blockid} = $tmp_undo_blockid;
@@ -610,18 +635,15 @@ Genezzo::Contrib::Clustered::Clustered - Shared data cluster support for Genezzo
 
 Genezzo is an extensible database with SQL and DBI.  It is written in Perl.
 Basic routines inside Genezzo are overridden via Havok SysHooks.  Override
-routines will (eventually) provide support for shared data clusters.  Routines
-will provide transactions, distributed locking, undo, and recovery.  Today
-these routines support a single-user single-threaded database, and provide
-basic transactional commit and rollback via undo.  Locking routines are
-currently stubs.
+routines provide support for shared data clusters.  Routines
+provide transactions, distributed locking, undo, and recovery.  
 
 =head2 Undo File Format
 
 All blocks are $Genezzo::Block::Std::DEFBLOCKSIZE 
 
 =head3 Header 
-  
+ 
   (block 0)
 
 Frozen data structure stored via Genezzo::Block::RDBlock->HPush()
@@ -703,22 +725,18 @@ none
 
 =head1 LIMITATIONS
 
-No Distributed/clustered functionality today.  Still single machine, 
-single process, single user, single threaded.
-
 This is pre-alpha software; don't use it to store any data you hope
 to see again!
 
-While OpenDLM locking is now working, undo is still single process
-(all processes use undo processid 1, so state and undo is overwritten).
+Transactions, Rollback, etc. are not fully implemented.  Process death
+and necessary cleanup is not detected.
 
 =head1 SEE ALSO
 
-For more information, please visit the Genezzo homepage 
-at L<http://www.genezzo.com>
-
-also L<http://eric_rollins.home.mindspring.com/genezzo/ClusteredGenezzoDesign.html>
-and L<http://eric_rollins.home.mindspring.com/genezzo/cluster.html>
+L<http://www.genezzo.com>
+L<http://eric_rollins.home.mindspring.com/genezzo/ClusteredGenezzoDesign.html>
+L<http://eric_rollins.home.mindspring.com/genezzo/cluster.html>
+L<http://opendlm.sourceforge.net/>
 
 =head1 AUTHOR
 

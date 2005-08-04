@@ -177,8 +177,11 @@ processes never communicate directly with one another.  They only interact
 via data stored in the Cluster File System and lock requests using
 the Distributed Lock Manager.
 <p>
-Each Genezzo process is started with a globally unique process id 
-(allocation technique TBD). 
+Each Genezzo process is started with a globally unique process id.
+Currently it is allocated by requesting a lock [SVR-processid] in 
+exclusive nowait mode, and incrementing the processid and retrying
+if the processid is already in use (this N^2 technique may need to be
+revisited with a large number of processes).
 All processes share a single undo file, but have distinct
 ranges of blocks preallocated to each process.
 Under

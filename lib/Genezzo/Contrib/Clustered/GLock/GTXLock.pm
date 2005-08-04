@@ -111,7 +111,7 @@ Retains hash of all locks held by transaction.
 
 =head1 FUNCTIONS
 
-=over 3
+=over 4
 
 =item new
 
@@ -129,9 +129,7 @@ Exclusive.  Adds lock to hash of all locks held by object.
 
 Unlocks all locks held by object.
 
-=head2 EXPORT
-
-=head1 LIMITATIONS
+=back
 
 =head1 AUTHOR
 

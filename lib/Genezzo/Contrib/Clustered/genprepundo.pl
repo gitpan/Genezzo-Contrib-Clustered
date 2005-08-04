@@ -5,7 +5,8 @@
 # Initialize undo file for Clustered Genezzo
 #
 #
-#use strict;
+use strict;
+use warnings;
 use Genezzo::GenDBI;
 use Getopt::Long;
 use Data::Dumper;
@@ -41,11 +42,11 @@ Options:
     Print a brief help message and exits.
 
 =item B<-man>
-    
+ 
     Prints the manual page and exits.
 
 =item B<-gnz_home>
-    
+ 
     Supply the location for the gnz_home installation.  If 
     specified, it overrides the GNZ_HOME environment variable.
 
@@ -67,7 +68,7 @@ Options:
   Undo file format is documented in Clustered.pm.
 
 =head1 TODO
-  
+
   Expand command-line argument support (numprocesses, blocks_per_process)
 
 =head1 AUTHOR
@@ -172,7 +173,7 @@ BEGIN {
 my $dbh = Genezzo::GenDBI->connect($glob_gnz_home,
                                    "NOUSER",
                                    "NOPASSWORD",
-                                   {GZERR => $dbi_gzerr});
+                                   {GZERR => $GZERR});
 
 if(!defined($dbh)){
   Carp::croak("failed connect");
@@ -182,22 +183,21 @@ $dbh->do("startup"); # start the database
 
 #-----------------------------------------------------------------
 # locate home
-$stmt =    "select pref_value from _pref1 where pref_key='home'";
+my $stmt =    "select pref_value from _pref1 where pref_key='home'";
 
-$sth = $dbh->prepare($stmt);
-	   
+my $sth = $dbh->prepare($stmt);
 
 if(!defined($sth)){
     Carp::croak("failed prepare 2");
 }
 
-$ret = $sth->execute();
+my $ret = $sth->execute();
 
 if(!defined($ret)){
     Carp::croak("failed execute 2");
 }
 
-$ggg = $sth->fetchrow_hashref();
+my $ggg = $sth->fetchrow_hashref();
 
 if(!defined($ggg)){
     Carp::croak("zero rows 2");
@@ -207,7 +207,8 @@ my $pref_home = $ggg->{pref_value};
 
 if ($glob_undo_filename eq ""){
     if($pref_home eq "/dev/raw"){
-	Carp::croak("raw device undo name required");
+	print "ERROR:  raw device -undo_filename required\n";
+	exit();
     }else{
 	$glob_undo_filename = "undo.und";
     }
@@ -215,22 +216,21 @@ if ($glob_undo_filename eq ""){
 
 #-----------------------------------------------------------------
 # read per-file info
-my $stmt =    "select fileidx, filename, blocksize, numblocks from _tsfiles";
+$stmt = "select fileidx, filename, blocksize, numblocks from _tsfiles";
 
-my $sth = $dbh->prepare($stmt);
-	   
+$sth = $dbh->prepare($stmt);
 
 if(!defined($sth)){
     Carp::croak("failed prepare");
 }
 
-my $ret = $sth->execute();
+$ret = $sth->execute();
 
 if(!defined($ret)){
     Carp::croak("failed execute");
 }
 
-$data = {
+my $undoHeader = {
     "procs" => $glob_procs,
     "blocks_per_proc" => $glob_blocks_per_proc,
     "files" => {}
@@ -263,7 +263,7 @@ while(1)
 
     $ggg->{hdrsize} = $hdrsize;
 
-    $data->{files}->{$ggg->{fileidx}} = $ggg;
+    $undoHeader->{files}->{$ggg->{fileidx}} = $ggg;
 }
 
 #-----------------------------------------------------------------
@@ -314,7 +314,7 @@ if($pref_home eq "/dev/raw"){
 
 #-----------------------------------------------------------------
 # store per-file info in file header block
-$frozen_data = FreezeThaw::freeze $data;
+my $frozen_undoHeader = FreezeThaw::freeze $undoHeader;
 
 # construct an empty byte buffer
 my $blocksize = $Genezzo::Block::Std::DEFBLOCKSIZE; 
@@ -325,7 +325,7 @@ my %tied_hash = ();
 my $tie_val = 
     tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff);
 
-my $newkey = $tie_val->HPush($frozen_data);
+my $newkey = $tie_val->HPush($frozen_undoHeader);
 
 my $fh;
 open($fh, ">$full_filename")
@@ -337,7 +337,6 @@ gnz_write ($fh, $buff, $blocksize)
 
 #-----------------------------------------------------------------
 # mark process status block for each process as no outstanding transaction
-my $buff;
 my $i;
 for($i = 0; $i < $glob_procs; $i++){
     $buff = "-" x 10;

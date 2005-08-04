@@ -5,11 +5,8 @@ Shared data cluster support for Genezzo
 
 Genezzo is an extensible database with SQL and DBI.  It is written in Perl.
 Basic routines inside Genezzo are overridden via Havok SysHooks.  Override
-routines will (eventually) provide support for shared data clusters.  Routines
-will provide transactions, distributed locking, undo, and recovery.  Today
-these routines support a single-user single-threaded database, and provide
-basic transactional commit and rollback via undo.  Locking routines are
-currently stubs.
+routines provide support for shared data clusters.  Routines
+provide transactions, distributed locking, undo, and recovery.  
 
 INSTALLATION
 
@@ -31,14 +28,11 @@ To prepare for use of Genezzo::Clustered
 
 LIMITATIONS
 
-  No Distributed/clustered functionality today.  Still single machine, 
-  single process, single user, single threaded.
-
   This is pre-alpha software; don't use it to store any data you hope
   to see again!
 
-  While OpenDLM locking is now working, undo is still single process
-  (all processes use undo processid 1, so state and undo is overwritten).
+  Transactions, Rollback, etc. are not fully implemented.  Process death
+  and necessary cleanup is not detected.
 
 DEPENDENCIES
 
@@ -46,6 +40,8 @@ This module requires these other modules and libraries:
 
   Genezzo
   FreezeThaw
+
+  OpenDLM
 
 SEE ALSO
 
@@ -55,6 +51,7 @@ SEE ALSO
   also 
   http://eric_rollins.home.mindspring.com/genezzo/ClusteredGenezzoDesign.html
   http://eric_rollins.home.mindspring.com/genezzo/cluster.html
+  http://opendlm.sourceforge.net/
 
 COPYRIGHT AND LICENCE
 
