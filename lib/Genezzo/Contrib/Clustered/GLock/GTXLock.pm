@@ -117,8 +117,6 @@ Retains hash of all locks held by transaction.
 
 Creates GTXLock
 
-=item lock
-
 =item lock (lock => NAME, shared => SHARED)
 
 Locks lock with name NAME.  Shared if SHARED=1, otherwise Exclusive (default).

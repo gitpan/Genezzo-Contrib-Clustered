@@ -17,7 +17,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.12';
+our $VERSION = '0.14';
 
 our $init_done;
 
@@ -84,6 +84,9 @@ sub DirtyBlock
 
     if($_[0]->{bce}){
         $h = $_[0]->{bce}->GetInfo();
+	# can't rely on dirty to make decisions, since it is cleared 
+	# whenever block is written out of buffer cache
+	# (on cache full, sync, etc.)
         $dirty = $_[0]->{bce}->_dirty();
     }
 
@@ -93,8 +96,7 @@ sub DirtyBlock
  
     if(!$inReadBlock &&
        defined($h) && 
-        ((!(defined($h->{filenum}))) || (!(defined($h->{blocknum})))) &&
-        !$dirty)
+        ((!(defined($h->{filenum}))) || (!(defined($h->{blocknum})))))
     {
         whisper "Genezzo::Contrib::Clustered::DirtyBlock bad undefined\n";
     }
@@ -105,12 +107,18 @@ sub DirtyBlock
     {
         whisper "Genezzo::Contrib::Clustered::DirtyBlock(filenum => $h->{filenum}, blocknum => $h->{blocknum}, dirty => $dirty)\n";
 
-        if(!($cl_ctx->{have_begin_trans})){
-	    BeginTransaction();
-	    $cl_ctx->{have_begin_trans} = 1;
-	}
+	my $blockKey = $h->{filenum} . "_" . $h->{blocknum};
 
-        if($dirty == 0){
+        if(!defined($cl_ctx->{dirty_blocks}->{$blockKey})){
+	    if(!($cl_ctx->{have_begin_trans})){
+		BeginTransaction();
+		$cl_ctx->{have_begin_trans} = 1;
+	    }
+
+            whisper "adding blockKey $blockKey\n";
+	    $cl_ctx->{dirty_blocks}->{$blockKey} = { f => $h->{filenum},
+                                                     b => $h->{blocknum}};
+
             my $gtxLock = $cl_ctx->{gtxLock};
 	    # add in fnum later...
 	    $gtxLock->lock(lock => $h->{blocknum}, shared => 0);
@@ -143,13 +151,15 @@ sub Commit
 
     WriteTransactionState($committed_buff);
 
-    # use undo to find all affected blocks and now clear undo proc id in
-    # all of them and write them all again (with sync)
+    # use $cl_ctx->{dirty_blocks} to find all affected blocks 
+    # and now clear undo proc id in all of them 
+    # and write them all again (with sync)
 
     # release all blocks in buffer cache (how?)
 
     my $gtxLock = $cl_ctx->{gtxLock};
     $gtxLock->unlockAll();
+    $cl_ctx->{dirty_blocks} = {};
 
     ResetUndo();
     WriteTransactionState($clear_buff);
@@ -181,6 +191,7 @@ sub Rollback
 
     my $gtxLock = $cl_ctx->{gtxLock};
     $gtxLock->unlockAll();
+    $cl_ctx->{dirty_blocks} = {};
 
     # currently this generates lots of writes, and another transaction
     # which is never committed.  Investigate.
@@ -190,6 +201,9 @@ sub Rollback
     ResetUndo();
     WriteTransactionState($clear_buff);
     $cl_ctx->{have_begin_trans} = 0;
+    $cl_ctx->{dirty_blocks} = {};
+    # we have accumulated more locks.  for now free them
+    $gtxLock->unlockAll();
 
     return $ret;
 }
@@ -563,7 +577,12 @@ if(0){
     InitConstBuff($clear_buff, $clear_code);
 
     # hashed on fileno
+    # contents IO::File
     $cl_ctx->{open_files} = {};
+
+    # hashed on $fileno_$blockno
+    # contents are { f => $fileno, b => $blockno } 
+    $cl_ctx->{dirty_blocks} = {};
 
     my $gtxLock = Genezzo::Contrib::Clustered::GLock::GTXLock->new();
     $cl_ctx->{gtxLock} = $gtxLock;
