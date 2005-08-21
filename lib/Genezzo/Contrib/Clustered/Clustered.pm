@@ -17,7 +17,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.15';
+our $VERSION = '0.16';
 
 our $init_done;
 
@@ -762,6 +762,8 @@ to see again!
 
 Transactions, Rollback, etc. are not fully implemented.  Process death
 and necessary cleanup is not detected.
+
+See README for current TODO list.
 
 =head1 SEE ALSO
 
