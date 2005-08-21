@@ -1,4 +1,8 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.15  Sun Aug 21 10:21:00 2005
+	moved body of genprepundo.pl to PrepUndo.pm
+	expanded tests to verify rollback really works
+
 0.14  Wed Aug 10 21:40:00 2005
 	maintain own dirty_block list instead of relying on dirty flag
 	pod fixes

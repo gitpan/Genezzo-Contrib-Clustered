@@ -17,7 +17,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 
 our $init_done;
 
@@ -47,6 +47,12 @@ our $pending_code;
 our $clear_code;
 
 our $undo_blocksize;
+
+# TEMPORARY HACK
+# these can be set from ouside until we have a good way to
+# pass command line params into syshook modules
+our $internal_gnz_home;
+#our $internal_undo_filename;
 
 ####################################################################
 # wraps Genezzo::BufCa::BCFile::ReadBlock
@@ -522,7 +528,14 @@ if(0){
     if(getUseRaw()){
 	$full_filename = "/dev/raw/raw2";
     }else{
-	$full_filename = "$ENV{HOME}/gnz_home/ts/undo.und";
+        if(defined($internal_gnz_home)){
+	    my $fhts = File::Spec->catdir($internal_gnz_home, "ts");
+                $full_filename =
+                    File::Spec->rel2abs(
+                        File::Spec->catfile($fhts, "undo.und"));
+        }else{
+	    $full_filename = "$ENV{HOME}/gnz_home/ts/undo.und";
+	}
     }
 }
 

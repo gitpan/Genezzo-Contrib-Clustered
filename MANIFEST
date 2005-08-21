@@ -4,7 +4,9 @@ MANIFEST
 README
 ClusteredGenezzoDesign.html
 t/Genezzo-Contrib-Clustered.t
+t/Genezzo-Contrib-Clustered2.t
 lib/Genezzo/Contrib/Clustered/Clustered.pm
+lib/Genezzo/Contrib/Clustered/PrepUndo.pm
 lib/Genezzo/Contrib/Clustered/clustered.sql
 lib/Genezzo/Contrib/Clustered/genprepundo.pl
 lib/Genezzo/Contrib/Clustered/GLock/GLock.pm
