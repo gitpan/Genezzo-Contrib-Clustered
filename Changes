@@ -1,4 +1,11 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.17  Tue Aug 30 11:59:00 2005
+        modified PrepUndo to use DictSetFileInfo to add undo_filename
+	  to default.dbf file header
+	modified clustered.sql to use oo_require
+	modified Clustered to use new OO style methods, use dict
+	  to look up undo_filename and gnz_home
+
 0.16  Sun Aug 21 12:40:00 2005
         added TODO to README
 

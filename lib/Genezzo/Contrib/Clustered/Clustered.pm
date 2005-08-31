@@ -17,7 +17,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 
 our $init_done;
 
@@ -36,37 +36,33 @@ our $undo_file;
 our $inReadBlock = 0;
 
 # constant blocks 
-our $committed_buff;
-our $rolledback_buff;
-our $pending_buff;
-our $clear_buff;
+our $COMMITTED_BUFF;
+our $ROLLEDBACK_BUFF;
+our $PENDING_BUFF;
+our $CLEAR_BUFF;
 
-our $committed_code;
-our $rolledback_code;
-our $pending_code;
-our $clear_code;
+our $COMMITTED_CODE;
+our $ROLLEDBACK_CODE;
+our $PENDING_CODE;
+our $CLEAR_CODE;
 
-our $undo_blocksize;
-
-# TEMPORARY HACK
-# these can be set from ouside until we have a good way to
-# pass command line params into syshook modules
-our $internal_gnz_home;
-#our $internal_undo_filename;
+our $UNDO_BLOCKSIZE;
 
 ####################################################################
 # wraps Genezzo::BufCa::BCFile::ReadBlock
 sub ReadBlock
 {
+    my $self = shift;
+
     my @tmpArgs = @_;
-    my $self = shift @tmpArgs;
+    my $wrapped_self = shift @tmpArgs;
     my %args = (@tmpArgs);
     my $fnum = $args{filenum};
     my $bnum = $args{blocknum};
     whisper "Genezzo::Contrib::Clustered::ReadBlock(filenum => $fnum, blocknum => $bnum)\n";
 
     if(!defined($init_done) || !$init_done){
-        _init();
+        $self->_init();
     }
 
     my $gtxLock = $cl_ctx->{gtxLock};
@@ -85,6 +81,8 @@ sub ReadBlock
 # wraps Genezzo::BufCa::DirtyScalar::STORE
 sub DirtyBlock
 {
+    my $self = shift;
+
     my $h;
     my $dirty;
 
@@ -97,7 +95,7 @@ sub DirtyBlock
     }
 
     if(!defined($init_done) || !$init_done){
-        _init();
+        $self->_init();
     }
  
     if(!$inReadBlock &&
@@ -143,19 +141,21 @@ sub DirtyBlock
 #wraps Genezzo::GenDBI::Kgnz_Commit
 sub Commit
 {
+    my $self = shift;
+
     whisper "Genezzo::Contrib::Clustered::Commit()\n";
 
     my @tmpArgs = @_;
-    my $self = shift @tmpArgs;
+    my $wrapped_self = shift @tmpArgs;
 
     if(!defined($init_done) || !$init_done){
-        _init();
+        $self->_init();
     }
 
     # assume this writes all blocks in buffer cache to disk
     my $ret = &$Commit_Hook(@_);
 
-    WriteTransactionState($committed_buff);
+    WriteTransactionState($COMMITTED_BUFF);
 
     # use $cl_ctx->{dirty_blocks} to find all affected blocks 
     # and now clear undo proc id in all of them 
@@ -168,7 +168,7 @@ sub Commit
     $cl_ctx->{dirty_blocks} = {};
 
     ResetUndo();
-    WriteTransactionState($clear_buff);
+    WriteTransactionState($CLEAR_BUFF);
     $cl_ctx->{have_begin_trans} = 0;
 
     return $ret;
@@ -178,21 +178,23 @@ sub Commit
 # wraps Genezzo::GenDBI::Kgnz_Rollback
 sub Rollback
 {
+    my $self = shift;
+
     whisper "Genezzo::Contrib::Clustered::Rollback()\n";
 
     my @tmpArgs = @_;
-    my $self = shift @tmpArgs;
+    my $wrapped_self = shift @tmpArgs;
 
     if(!defined($init_done) || !$init_done){
-        _init();
+        $self->_init();
     }
 
-    WriteTransactionState($rolledback_buff);
+    WriteTransactionState($ROLLEDBACK_BUFF);
 
     Rollback_Internal();
 
     ResetUndo();
-    WriteTransactionState($clear_buff);
+    WriteTransactionState($CLEAR_BUFF);
     $cl_ctx->{have_begin_trans} = 0;
 
     my $gtxLock = $cl_ctx->{gtxLock};
@@ -205,7 +207,7 @@ sub Rollback
 
     # for now, we never want to rollback this extra info, so
     ResetUndo();
-    WriteTransactionState($clear_buff);
+    WriteTransactionState($CLEAR_BUFF);
     $cl_ctx->{have_begin_trans} = 0;
     $cl_ctx->{dirty_blocks} = {};
     # we have accumulated more locks.  for now free them
@@ -231,14 +233,14 @@ sub Rollback_Internal()
 	# utilize paired blocks later...
 	my $offset = $undo_blockid * 2;
 	
-	my $blk = ($cl_ctx->{proc_undo_blocknum} + $offset)*$undo_blocksize;
+	my $blk = ($cl_ctx->{proc_undo_blocknum} + $offset)*$UNDO_BLOCKSIZE;
 	$undo_file->sysseek($blk, 0)
 	    or die "bad seek - file undo block $blk: $! \n";
 
 	my $buff;
 
-	Genezzo::Util::gnz_read ($undo_file, $buff, $undo_blocksize)
-	    == $undo_blocksize
+	Genezzo::Util::gnz_read ($undo_file, $buff, $UNDO_BLOCKSIZE)
+	    == $UNDO_BLOCKSIZE
 	    or die 
             "bad read - file undo : block $blk : $! \n";
     
@@ -351,10 +353,10 @@ sub CopyBlockToOrFromTail
 sub WriteTransactionState{
     my ($state_buff) = @_;
 
-    my $blk = $cl_ctx->{proc_state_blocknum}*$undo_blocksize;
+    my $blk = $cl_ctx->{proc_state_blocknum}*$UNDO_BLOCKSIZE;
     $undo_file->sysseek($blk, 0)
 	or die "bad seek - file undo block $blk: $! \n";
-    Genezzo::Util::gnz_write($undo_file, $state_buff, $undo_blocksize)
+    Genezzo::Util::gnz_write($undo_file, $state_buff, $UNDO_BLOCKSIZE)
 	or die "bad write - file undo block $blk: $! \n";
     $undo_file->sync;
 }
@@ -363,10 +365,10 @@ sub WriteTransactionState{
 sub ReadTransactionState(){
     my $buf;
 
-    my $blk = $cl_ctx->{proc_state_blocknum}*$undo_blocksize;
+    my $blk = $cl_ctx->{proc_state_blocknum}*$UNDO_BLOCKSIZE;
     $undo_file->sysseek($blk, 0)
 	or die "bad seek - file undo block $blk: $! \n";
-    Genezzo::Util::gnz_read($undo_file, $buf, $undo_blocksize)
+    Genezzo::Util::gnz_read($undo_file, $buf, $UNDO_BLOCKSIZE)
 	or die "bad write - file undo block $blk: $! \n";
 
     return substr($buf,0,1);
@@ -390,7 +392,7 @@ sub BeginTransaction
     # increment transaction id
     $cl_ctx->{tx_id} = $cl_ctx->{tx_id} + 1;
     # mark transaction pending
-    WriteTransactionState($pending_buff);
+    WriteTransactionState($PENDING_BUFF);
 
     $cl_ctx->{current_undo_blockid} = 0;
 
@@ -402,7 +404,7 @@ sub BeginTransaction
    
 sub CreateUndoBlock
 {
-    my $buff = "\0" x $undo_blocksize;
+    my $buff = "\0" x $UNDO_BLOCKSIZE;
     my %tied_hash = ();
     my $tie_val =
         tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff);
@@ -455,17 +457,17 @@ sub WriteUndoBlock
         die("Undo Full:  undo offset $offset >= block_per_proc $cl_ctx->{undoHeader}->{blocks_per_proc} - 1\n");
     }
     
-    my $blk = ($cl_ctx->{proc_undo_blocknum} + $offset)*$undo_blocksize;
+    my $blk = ($cl_ctx->{proc_undo_blocknum} + $offset)*$UNDO_BLOCKSIZE;
     $undo_file->sysseek($blk, 0)
 	or die "bad seek - file undo block $blk: $! \n";
 
     my $bp = $cl_ctx->{current_undo_block_buf};
-    Genezzo::Util::gnz_write($undo_file, $$bp, $undo_blocksize)
-        == $undo_blocksize
+    Genezzo::Util::gnz_write($undo_file, $$bp, $UNDO_BLOCKSIZE)
+        == $UNDO_BLOCKSIZE
 	or die "bad write of undo to undo : $! \n";
     # write it again to block+1 (paired writes)
-    Genezzo::Util::gnz_write($undo_file, $$bp, $undo_blocksize)
-        == $undo_blocksize
+    Genezzo::Util::gnz_write($undo_file, $$bp, $UNDO_BLOCKSIZE)
+        == $UNDO_BLOCKSIZE
         or die "bad write (2) of undo to undo : $! \n";
     $undo_file->sync;
 }
@@ -478,38 +480,24 @@ sub InitConstBuff(\$$)
     $buff = $buff. ("-" x 9);
     my $procstr = sprintf("%10d", $cl_ctx->{proc_num});
     $buff = $buff . $procstr;
-    $buff = $buff . ( "-" x ($undo_blocksize - 20) );
+    $buff = $buff . ( "-" x ($UNDO_BLOCKSIZE - 20) );
     $$b = $buff;
 }
 
 sub _init
 {
+    my $self = shift;
+
     if(defined($init_done) && $init_done){
         return;
     }
 
     whisper "Genezzo::Contrib::Clustered::_init called\n";
 
-    $cl_ctx = {};
-    $inReadBlock = 0;
+    my $dict = $self->{dict};
+    my $undo_filename = $dict->{fileheaderinfo}->{undo_filename};
 
-    $committed_buff = "";
-    $rolledback_buff = "";
-    $pending_buff = "";
-    $clear_buff = "";
-
-    $committed_code = "C";
-    $rolledback_code = "R";
-    $pending_code = "P";
-    $clear_code = "-";
-
-    $undo_blocksize = $Genezzo::Block::Std::DEFBLOCKSIZE;
-
-    my $full_filename;
-
-if(0){
-    my $dict = $Genezzo::Dict::the_dict;
-    my $undo_filename = $dict->{prefs}->{undo_filename};
+    die unless(defined($undo_filename));
 
     my $fhts;   # gnz_home table space
 
@@ -519,25 +507,9 @@ if(0){
         $fhts = File::Spec->catdir($dict->{gnz_home}, "ts");
     }
 
-    $full_filename =
+    my $full_filename =
         File::Spec->rel2abs(
             File::Spec->catfile($fhts, $undo_filename));
-}else{
-    # FIXME super hack -- need global $Genezzo::Dict::the_dict, above,
-    # to get gnz_home, etc.  for now hard code
-    if(getUseRaw()){
-	$full_filename = "/dev/raw/raw2";
-    }else{
-        if(defined($internal_gnz_home)){
-	    my $fhts = File::Spec->catdir($internal_gnz_home, "ts");
-                $full_filename =
-                    File::Spec->rel2abs(
-                        File::Spec->catfile($fhts, "undo.und"));
-        }else{
-	    $full_filename = "$ENV{HOME}/gnz_home/ts/undo.und";
-	}
-    }
-}
 
     $undo_file = new IO::File "+<$full_filename"
         or die "sysopen $full_filename failed: $!\n";
@@ -545,8 +517,8 @@ if(0){
     #construct an empty byte buffer
     my $buff;
 
-    Genezzo::Util::gnz_read($undo_file, $buff, $undo_blocksize) 
-        == $undo_blocksize
+    Genezzo::Util::gnz_read($undo_file, $buff, $UNDO_BLOCKSIZE) 
+        == $UNDO_BLOCKSIZE
     	or die "bad read - file $full_filename: $!\n";
     
     my %tied_hash = ();
@@ -584,10 +556,10 @@ if(0){
     $cl_ctx->{proc_undo_blocknum} = 
         1 + $cl_ctx->{undoHeader}->{procs} + 
 	($cl_ctx->{undoHeader}->{blocks_per_proc} * $cl_ctx->{proc_num});
-    InitConstBuff($committed_buff, $committed_code);
-    InitConstBuff($rolledback_buff, $rolledback_code);
-    InitConstBuff($pending_buff, $pending_code);
-    InitConstBuff($clear_buff, $clear_code);
+    InitConstBuff($COMMITTED_BUFF, $COMMITTED_CODE);
+    InitConstBuff($ROLLEDBACK_BUFF, $ROLLEDBACK_CODE);
+    InitConstBuff($PENDING_BUFF, $PENDING_CODE);
+    InitConstBuff($CLEAR_BUFF, $CLEAR_CODE);
 
     # hashed on fileno
     # contents IO::File
@@ -602,7 +574,7 @@ if(0){
 
     my $tx_state = ReadTransactionState();
 
-    if(($tx_state eq $pending_code) || ($tx_state eq $rolledback_code)){
+    if(($tx_state eq $PENDING_CODE) || ($tx_state eq $ROLLEDBACK_CODE)){
 	print "rollback at startup necessary!\n";
 	Rollback_Internal();
 	# what about restarting???
@@ -613,7 +585,7 @@ if(0){
         # currently wrong, actually lots of work is done and leaves open tx
         # that needs committing
 	# but it is ignored since we mark 'clear' at end
-    }elsif($tx_state eq $committed_code){
+    }elsif($tx_state eq $COMMITTED_CODE){
 	# need to clear undo proc id in blocks...
     }
 
@@ -635,16 +607,51 @@ if(0){
     whisper "end init undo\n";
 
     $cl_ctx->{tx_id} = 1;	# TODO:  add timestamp 
-    WriteTransactionState($clear_buff);
+    WriteTransactionState($CLEAR_BUFF);
     $cl_ctx->{have_begin_trans} = 0;
 
     whisper "Genezzo::Contrib::Clustered::_init finished\n";
     $init_done = 1;
 }
 
+sub new
+{
+    whoami;
+    my $invocant = shift;
+    my $class = ref($invocant) || $invocant ;
+    my $self = { };
+
+    $self->{dict} = shift @_;
+    # greet $self->{dict}->{prefs};
+
+    return bless $self, $class;
+
+}
+
+sub SysHookInit
+{
+    goto &new
+
+}
+
 BEGIN
 {
     print "Genezzo::Contrib::Clustered will be installed\n"; 
+
+    $cl_ctx = {};
+    $inReadBlock = 0;
+
+    $COMMITTED_BUFF = "";
+    $ROLLEDBACK_BUFF = "";
+    $PENDING_BUFF = "";
+    $CLEAR_BUFF = "";
+
+    $COMMITTED_CODE = "C";
+    $ROLLEDBACK_CODE = "R";
+    $PENDING_CODE = "P";
+    $CLEAR_CODE = "-";
+
+    $UNDO_BLOCKSIZE = $Genezzo::Block::Std::DEFBLOCKSIZE;
 }
 
 1;

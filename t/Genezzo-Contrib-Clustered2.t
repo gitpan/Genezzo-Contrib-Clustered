@@ -30,9 +30,6 @@ my $gnz_home = File::Spec->catdir("t", "gnz_home");
 #rmtree($gnz_home, 1, 1);
 #mkpath($gnz_home, 1, 0755);
 
-# hack to set gnz_home in Clustered
-$Genezzo::Contrib::Clustered::Clustered::internal_gnz_home = $gnz_home;
-
 {
     use Genezzo::Util;
 

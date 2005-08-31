@@ -55,9 +55,7 @@ SEE ALSO
 
 TODO
 
-  1)   [Genezzo fix] DB Block header size for filesystem devices needs to be
-       a multiple of operating system block size.  Otherwise corruptions
-       will occur. 
+  1)   [Genezzo fix done]
 
   2)   [Genezzo update] Need a exception mechanism when SQL is run to catch
        errors such as running out of disk space.  Currently multi-row
@@ -79,27 +77,27 @@ TODO
 
   6)   [Genezzo update] Need way to invalidate entire buffer cache.
        Simply release all blocks, don't write them to disk (disk write
-       should already have been done in commit case).
+       should already have been done in commit case).  Also need to
+       be able to release single blocks on demand -- this would be used
+       when async-callback lock request support is added.
 
   7)   Invalidate buffer cache (using new mechanism above) before releasing 
        all locks on commit or rollback.  Actually only invalidate 
        non-system tablespace portion, see below.
 
-  8)   [Genezzo update] add a way for command-line parameters (esp.
-       gnz_home and undo_filename) and prefs to be available inside
-       syshook packages.
+  8)   [Genezzo update done] 
 
-  9)   Use command-line prameters (from above) for gnz_home and undo_filename.
-       Can't use prefs since we may be starting a corrupt database which
-       requires recovery before prevs can be read.  May be still able
-       to use information stored in header of default datafile.  Header
-       is not normally written at runtime (and isn't covered by undo), 
-       and is assumed non-corrupt.
+  9)   done
 
   10)  [Genezzo fix] fix "mystery" writes.  These bogus writes create 
        unnecessary write locks,  generate unnecessary undo, and confuse 
        rollback code.  Solution may be to attach syshook to new attachment 
-       point instead of Genezzo::BufCa::DirtyScalar::STORE.
+       point instead of Genezzo::BufCa::DirtyScalar::STORE.  Yes, some of
+       the writes are not "mysteries".  They occur when a pre-existing
+       buffer cache block is reused -- the reloading of new data from disk
+       or memory into the block triggers the STORE callback.  The cure
+       is to attach the syshook in a more intelligent location that is
+       aware of the different cases.
 
   11)  [Genezzo update] complete tablespace support.
 
@@ -109,7 +107,14 @@ TODO
        initialization.  And locking system tables prevents other
        instances from running in parallel.
 
-  13)  After the above, complete rest of development per Design Document:
+  13)  [Genezzo update] add pre-havok command line param which specifies
+       routine to run prior to opening database.
+
+  14)  Use pre-havok (above) to perform recovery prior to opening database.
+       Havok/syshook routines won't run if database cannot be opened due
+       to corruption.
+
+  99)  After the above, complete rest of development per Design Document:
    a)  Detect blocks needing recovery via process_id in block
    b)  Recover dead processes
    c)  etc...

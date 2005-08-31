@@ -5,6 +5,7 @@ README
 ClusteredGenezzoDesign.html
 t/Genezzo-Contrib-Clustered.t
 t/Genezzo-Contrib-Clustered2.t
+t/Genezzo-Contrib-Clustered3.t
 lib/Genezzo/Contrib/Clustered/Clustered.pm
 lib/Genezzo/Contrib/Clustered/PrepUndo.pm
 lib/Genezzo/Contrib/Clustered/clustered.sql

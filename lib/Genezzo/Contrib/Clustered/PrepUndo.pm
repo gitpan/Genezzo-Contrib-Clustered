@@ -54,13 +54,13 @@ sub MakeSQL
     ($bigSQL = <<EOF_SQL) =~ s/^\#//gm;
 #REM prepare database for Genezzo::Contrib::Clustered
 #REM ATAThavok.sql and ATATsyshook.sql first
-#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1000, 'Genezzo::BufCa::BCFile', 'ReadBlock', 'ReadBlock_Hook', 'require', 'Genezzo::Contrib::Clustered::Clustered', 'ReadBlock', 'SYSTEM', TODAY, '1');
-#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1001, 'Genezzo::BufCa::DirtyScalar', 'STORE', 'DirtyBlock_Hook', 'require', 'Genezzo::Contrib::Clustered::Clustered', 'DirtyBlock', 'SYSTEM', TODAY, '1');
-#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1002, 'Genezzo::GenDBI', 'Kgnz_Commit', 'Commit_Hook', 'require', 'Genezzo::Contrib::Clustered::Clustered', 'Commit', 'SYSTEM', TODAY, '1');
-#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1003, 'Genezzo::GenDBI', 'Kgnz_Rollback', 'Rollback_Hook', 'require', 'Genezzo::Contrib::Clustered::Clustered', 'Rollback', 'SYSTEM', TODAY, '1');
+#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1000, 'Genezzo::BufCa::BCFile', 'ReadBlock', 'ReadBlock_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'ReadBlock', 'SYSTEM', TODAY, '1');
+#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1001, 'Genezzo::BufCa::DirtyScalar', 'STORE', 'DirtyBlock_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'DirtyBlock', 'SYSTEM', TODAY, '1');
+#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1002, 'Genezzo::GenDBI', 'Kgnz_Commit', 'Commit_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'Commit', 'SYSTEM', TODAY, '1');
+#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1003, 'Genezzo::GenDBI', 'Kgnz_Rollback', 'Rollback_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'Rollback', 'SYSTEM', TODAY, '1');
 #commit;
 #shutdown;
-#REM restart gendba.pl from command line, so havok routines won't be redefined
+#REM restart gendba.pl from command line, so havok routines will be redefined
 #quit;
 EOF_SQL
     my $now = Genezzo::Dict::time_iso8601();
@@ -157,7 +157,7 @@ sub prepareUndo
     
 #-----------------------------------------------------------------
 # read per-file info
-    $stmt = "select fileidx, filename, blocksize, numblocks from _tsfiles";
+    $stmt = "select fileidx,filename,blocksize,numblocks,tsid from _tsfiles";
     
     $sth = $dbh->prepare($stmt);
     
@@ -200,7 +200,8 @@ sub prepareUndo
             or die "open $full_filename failed: $!\n";
         
         my ($hdrsize, $version, $blocksize, $h1) = 
-            Genezzo::Util::FileGetHeaderInfo($fh, $full_filename);
+            Genezzo::Util::FileGetHeaderInfo(filehandle => $fh, 
+	        filename => $full_filename);
         
         $ggg->{hdrsize} = $hdrsize;
         
@@ -208,42 +209,10 @@ sub prepareUndo
     }
     
 #-----------------------------------------------------------------
-# use both insert and update to set undo_filename
-    $stmt = 
-        "update _pref1 set pref_value='$glob_undo_filename' where pref_key='undo_filename'";
-    
-    $sth = $dbh->prepare($stmt);
-    
-    if(!defined($sth)){
-        Carp::croak("failed prepare 3");
-      }
-    
-    $ret = $sth->execute();
-    
-    if(!defined($ret)){
-        Carp::croak("failed execute 3")
-        }
-    
-    if($ret != 1){
-        my $time = Genezzo::Dict::time_iso8601();
-        my $pver = "Genezzo::Contrib::Clustered " . 
-            $Genezzo::Contrib::Clustered::Clustered::VERSION;
-        $stmt = "insert into _pref1 (pref_key, pref_value, creationdate, pref_desc) values " .
-            "('undo_filename', '$glob_undo_filename','$time', '$pver')";
-        
-        $sth = $dbh->prepare($stmt);
-        
-        if(!defined($sth)){
-            Carp::croak("failed prepare 3");
-          }
-        
-        $ret = $sth->execute();
-        
-        if(!defined($ret)){
-            Carp::croak("failed execute 3");
-          } 
-    }
-    
+    my $dictobj = $dbh->{dictobj};
+    $dictobj->DictSetFileInfo(newkey => "undo_filename",
+        newval => $glob_undo_filename);
+
     $dbh->do("commit");
     
     my $full_filename;
