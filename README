@@ -19,7 +19,7 @@ To install this module type the following:
 
 To prepare for use of Genezzo::Clustered
 
-  ./genprepundo.pl
+  genprepundo.pl
 
   gendba.pl
   >@havok.sql
@@ -69,17 +69,19 @@ TODO
 
   4)   [Genezzo update or documentation] Need to be able to add metadata to
        DB data blocks.  Need to update block checksum, etc. when this is done.
+       [Now works, but only during write callback.  Cannot be done on blocks
+       read independently].
 
-  5)   Use block metadata (above) to add process_id to each modified block,
-       and later clear process_id.  This is done in or near 
-       Genezzo::BufCa::DirtyScalar::STORE.  May need to register callback
-       on different routine to prevent endless recursion.
+  5)   Use block metadata (above) to add process_id to each modified block
+       [done], and later clear (set to 0) process_id.  
 
   6)   [Genezzo update] Need way to invalidate entire buffer cache.
        Simply release all blocks, don't write them to disk (disk write
        should already have been done in commit case).  Also need to
        be able to release single blocks on demand -- this would be used
-       when async-callback lock request support is added.
+       when async-callback lock request support is added.  Single
+       block release is also used when recovering a block.  Also need
+       to be able to request re-read of a block.
 
   7)   Invalidate buffer cache (using new mechanism above) before releasing 
        all locks on commit or rollback.  Actually only invalidate 

@@ -17,7 +17,7 @@ use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
 
-our $VERSION = '0.17';
+our $VERSION = '0.18';
 
 our $init_done;
 
@@ -47,6 +47,41 @@ our $PENDING_CODE;
 our $CLEAR_CODE;
 
 our $UNDO_BLOCKSIZE;
+
+####################################################################
+# called by BufCa::BCFile::_filewriteblock
+# sets proc_num in block
+sub _init_filewriteblock
+{
+    my $self = shift;
+    my ($wrapped_self, $fname, $fnum, $fh, $bnum, $refbuf, $hdrsize, 
+	$bce) = @_;
+
+    if(!defined($init_done) || !$init_done){
+        $self->_init();
+    }
+
+    return 1
+        unless (defined($bce));
+
+    whoami;
+
+    if (1)
+    {
+        my $foo = $bce->GetInfo();
+
+        return 1
+            unless (defined($foo));
+
+        if (exists($foo->{mailbox})
+            && exists($foo->{mailbox}->{'Genezzo::Block::RDBlock'}))
+        {
+            my $rdblock = $foo->{mailbox}->{'Genezzo::Block::RDBlock'};
+            greet $rdblock->_set_meta_row("PID", ["PID", $cl_ctx->{proc_num}]);
+        }
+    }
+    return 1;
+}
 
 ####################################################################
 # wraps Genezzo::BufCa::BCFile::ReadBlock
@@ -529,7 +564,7 @@ sub _init
     my ( $undoHeader ) = FreezeThaw::thaw $frozen_undoHeader;
     $cl_ctx->{undoHeader} = $undoHeader;
 
-    my $try_proc_num = 0;
+    my $try_proc_num = 1;
 
     # determine if this proc_num is free
     while(1){
@@ -549,7 +584,7 @@ sub _init
     }
 
     $cl_ctx->{proc_num} = $try_proc_num;
-    print "Genezzo::Contrib::Clustered Assigned Process Number = $try_proc_num\n";
+    print STDERR "Genezzo::Contrib::Clustered Assigned Process Number = $try_proc_num\n";
  
     $cl_ctx->{proc_state_blocknum} = 
 	$cl_ctx->{proc_num} + 1;  # 1 for undoHeader
@@ -575,11 +610,11 @@ sub _init
     my $tx_state = ReadTransactionState();
 
     if(($tx_state eq $PENDING_CODE) || ($tx_state eq $ROLLEDBACK_CODE)){
-	print "rollback at startup necessary!\n";
+	print STDERR "rollback at startup necessary!\n";
 	Rollback_Internal();
 	# what about restarting???
-	print "PLEASE TYPE ROLLBACK COMMAND\n";
-	# print "FOLLOWED BY COMMIT COMMAND\n";
+	print STDERR "PLEASE TYPE ROLLBACK COMMAND\n";
+	# print STDERR "FOLLOWED BY COMMIT COMMAND\n";
 	# note here no rollback work will occur, but system will restart
 	# from disk (I hope)
         # currently wrong, actually lots of work is done and leaves open tx
@@ -636,7 +671,7 @@ sub SysHookInit
 
 BEGIN
 {
-    print "Genezzo::Contrib::Clustered will be installed\n"; 
+    print STDERR "Genezzo::Contrib::Clustered will be installed\n"; 
 
     $cl_ctx = {};
     $inReadBlock = 0;
@@ -722,7 +757,7 @@ Frozen data structures stored via Genezzo::Block::RDBlock->HPush().
 
 The list of fileno/blockno indicate which blocks should be replaced if
 the transaction rolls back, or which blocks should have the process id
-cleared (not yet implemented) if the transaction commits.
+cleared if the transaction commits.
 
 At process startup undo blocks for the process are initially all written 
 with tx 0, so we can distinguish when we move to a block left over from 

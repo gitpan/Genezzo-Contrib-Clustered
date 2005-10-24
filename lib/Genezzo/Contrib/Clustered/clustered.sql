@@ -4,6 +4,7 @@ insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creati
 insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1001, 'Genezzo::BufCa::DirtyScalar', 'STORE', 'DirtyBlock_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'DirtyBlock', 'SYSTEM', '2005-07-25T12:12', '1');
 insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1002, 'Genezzo::GenDBI', 'Kgnz_Commit', 'Commit_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'Commit', 'SYSTEM', '2005-07-25T12:12', '1');
 insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1003, 'Genezzo::GenDBI', 'Kgnz_Rollback', 'Rollback_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'Rollback', 'SYSTEM', '2005-07-25T12:12', '1');
+insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1004, 'Genezzo::BufCa::BCFile', '_init_filewriteblock', '_init_fwb_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', '_init_filewriteblock', 'SYSTEM', '2005-07-25T12:12', '1');
 commit;
 shutdown;
 REM restart gendba.pl from command line so Havok routines will be redefined

@@ -1,4 +1,8 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.18  Sun Oct 23 19:00:00 2005
+        Writing PIDs to blocks.  No set to zero yet.
+	Print to STDERR, not STDOUT.
+
 0.17  Tue Aug 30 11:59:00 2005
         modified PrepUndo to use DictSetFileInfo to add undo_filename
 	  to default.dbf file header
