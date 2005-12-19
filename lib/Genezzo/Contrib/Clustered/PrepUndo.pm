@@ -256,7 +256,7 @@ sub prepareUndo
         $buff = "-" x 10;
         my $procstr = sprintf("%10d", $i);
         $buff = $buff . $procstr;
-        $buff = $buff . ( "-" x ($blocksize - 20) );
+        $buff = $buff . ( "=" x ($blocksize - 20) );
         
         gnz_write ($fh, $buff, $blocksize)
             == $blocksize

@@ -18,7 +18,7 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.19';
+our $VERSION = '0.20';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
@@ -907,19 +907,19 @@ sub UpdateChecksum
 }
 
 ####################################################################
-# Not a method.
-sub InitConstBuff(\$$)
+# Not shareable as constant when they contain PID!
+sub InitConstBuff()
 {
-    my ($b, $code) = @_;
+    my ($self, $bufref, $code) = @_;
 
     my $buff = $code;
     $buff = $buff. ("-" x 9);
     # Can't store PID if shared between procs.
-    # my $procstr = sprintf("%10d", $cl_ctx->{proc_num});
-    my $procstr = sprintf("%10d", 0);
+    my $procstr = sprintf("%10d", $self->{cl_ctx}->{proc_num});
+    #my $procstr = sprintf("%10d", 0);
     $buff = $buff . $procstr;
-    $buff = $buff . ( "-" x ($UNDO_BLOCKSIZE - 20) );
-    $$b = $buff;
+    $buff = $buff . ( "=" x ($UNDO_BLOCKSIZE - 20) );
+    $$bufref = $buff;
 }
 
 ####################################################################
@@ -1014,10 +1014,10 @@ sub _init
         1 + $cl_ctx->{undoHeader}->{procs} + 
 	($cl_ctx->{undoHeader}->{blocks_per_proc} * $cl_ctx->{proc_num});
 
-    InitConstBuff($COMMITTED_BUFF, $COMMITTED_CODE);
-    InitConstBuff($ROLLEDBACK_BUFF, $ROLLEDBACK_CODE);
-    InitConstBuff($PENDING_BUFF, $PENDING_CODE);
-    InitConstBuff($CLEAR_BUFF, $CLEAR_CODE);
+    $self->InitConstBuff(\$COMMITTED_BUFF, $COMMITTED_CODE);
+    $self->InitConstBuff(\$ROLLEDBACK_BUFF, $ROLLEDBACK_CODE);
+    $self->InitConstBuff(\$PENDING_BUFF, $PENDING_CODE);
+    $self->InitConstBuff(\$CLEAR_BUFF, $CLEAR_CODE);
 
     # Hashed on fileno.
     # Contains IO::File.
@@ -1174,7 +1174,7 @@ Frozen data structure stored via Genezzo::Block::RDBlock->HPush()
 
   (block 1 to $processes+1)
 
- ----------processid(10)---------------- to end of block
+ ----------processid(10)================= to end of block
 
  1st character is status:
 
@@ -1210,17 +1210,26 @@ this module is enabled data files actually grow to twice their declared
 size.  Note dynamic data file growth (increase_by) is not supported 
 with this module.
 
+While a transaction is in progress blocks in the main portion of the
+file will contain the process id (PID) of the active process. 
+Before-image blocks at the tail of the file should always have PIDs 
+of 0 (or unset).
+
 =head1 FUNCTIONS
 
 =over 4
 
 =item ReadBlock
 
-Wraps Genezzo::BufCa::BCFile::ReadBlock
+Wraps Genezzo::BufCa::BCFile::_filereadblock
 
 =item DirtyBlock
 
 Wraps Genezzo::BufCa::DirtyScalar::STORE
+
+=item _init_filewriteblock
+
+Called by Genezzo::BufCa::BCFile::_filewriteblock
 
 =item Commit
 

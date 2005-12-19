@@ -1,4 +1,10 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.20  Mon Dec 19 07:00:00 2005
+	Update ClusteredGenezzoDesign.html
+	Pad transaction status block with '=' instead of '-'
+	Restore write of PID in transaction status block
+	Update Pod
+
 0.19  Sun Dec 18 23:00:00 2005
 	Detect blocks needing recovery via PID in block.
 	Recover blocks and processes, resetting PID to zero.
