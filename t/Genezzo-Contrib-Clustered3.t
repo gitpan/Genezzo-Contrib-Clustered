@@ -22,6 +22,8 @@ my $TEST_COUNT;
 
 $TEST_COUNT = 2;
 
+# verifies locking disabled for CPAN submission
+
 fail ("Genezzo::Contrib::Clustered::GLock::GLock::IMPL not set to NONE")
   unless ($Genezzo::Contrib::Clustered::GLock::GLock::IMPL ==
     $Genezzo::Contrib::Clustered::GLock::GLock::NONE);

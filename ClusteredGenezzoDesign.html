@@ -4,7 +4,7 @@
 </head>
 <body>
 <center><h1>Clustered Genezzo Design Document</h1></center>
-<center><h4>July 31, 2005</h4></center>
+<center><h4>December 18, 2005</h4></center>
 <center><h4>Eric Rollins</h4></center>
 <h2>Introduction</h2>
 Genezzo is a relational database written in Perl currently under development.
@@ -184,15 +184,9 @@ exclusive nowait mode, and incrementing the processid and retrying
 if the processid is already in use (this N^2 technique may need to be
 revisited with a large number of processes).
 All processes share a single undo file, but have distinct
-ranges of blocks preallocated to each process.
-Under
-normal operation only the owning process reads or writes its
-portion of the undo file.  When a process failure occurs the first Genezzo
-server process to detect the failure will roll back any failed
-transaction using the
-undo file information.  Exclusive access to these undo file sections
- is maintained by
-a single DLM lock [SVR-processId].
+ranges of blocks preallocated to each process.  
+Only the owning process reads or writes its
+portion of the undo file.  
 <p>
 The undo file lists the current status of each process (CLEAR, COMMITTED,
 ROLLEDBACK, PENDING) with one block per process.  A range of blocks per
@@ -200,6 +194,12 @@ process lists filenumber-blocknumber pairs.  These are the blocks written
 to by the current transaction.  Before the data block is written the
 before image is copied to the tail of its associated data file to a slot
 at filelength + blocknum.
+<p>
+Blocks written by a process but not yet committed contain the process id.
+When a process failure occurs
+block locks will be released.  If a block is read containing another
+process id the state of the failed process is read and the block
+is replaced with the before image if necessary.
 <p>
 Note only before-images of blocks are being generated, 
 and they are only being retained for the duration of the transaction.
@@ -225,7 +225,6 @@ The basic Clustered Genezzo data block structure is as follows:
    blockType
    fileNumber
    blockNumber
-   blockRevisionNumber
    currentProcess  (or none)
    ...metadata...
    ...row data..
@@ -242,13 +241,9 @@ a commit record if the transaction was committed.  In this case
 has been rolled back, and the current block needs to be replaced with the
 before image from the tail of the data file.
 <p>
-<i>blockRevisionNumber</i> is incremented once for each (commited) 
-transaction this block participates in.  Note no global System Commit
+Note no global System Commit
 Number or Log Sequence Number is maintained.  This eliminates the need
-for this type of global sequence generation algorithm.  The algorithms
-in this document do not currently utilize the <i>blockRevisionNumber</i>.
-It is useful for log-based recovery, multi-version read consistency / 
-row-level locking, etc.
+for this type of global sequence generation algorithm.  
 <h2>Normal Transaction Operation</h2>
 At the beginning of a normal transaction the process's undo file status block
 will be set to clear.
@@ -263,36 +258,41 @@ The process will determine whether this block is already locked by the
 process.  If not, a blocking SHARED mode lock request will be made.
 <pre>
 def blockReadRequest(fileNumber, blockNumber)
-   form lock name [BLK-fileNumber-blockNumber]
+   form lock name [BLK-blockNumber mod 100000]
 
    if(not lock already held by process)
-       blocking SHARED lock request
+      blocking SHARED lock request
       add lock to hash and list of locks held by process
    end
 
-loadBlock:
    checksumMatch = false
    retries = 0
 
    // all block reads follow this checksum-retry logic;
    // it is only listed here
    while(not checksumMatch and retries < maxRetryCount)
-     read block from disk
-     compute checksumMatch for block
+      read block from disk
+      compute checksumMatch for block
    end
 
    if(retries >= maxRetryCount)
       raise BlockCorruptionException
    end
 
-   if(block currentUndo is not none (and not current process!))
-      if(recoverProcess(currentUndo in block) == FALSE)
-        sleep 5 seconds    // couldn't get lock; hopefully someone else
-                           // is in the middle of recovering this process
-      end
+   if(block PID not none (and not current process!))
+      promote block lock to EXCLUSIVE
+      // Safe to read state, since we were able to obtain EX block lock
+      get process state for PID 
 
-      goto loadBlock
+      if state == COMMITTED
+         clear PID in block at tail of file
+	 clear PID in block in file
+      else if state == ROLLEDBACK || state == PENDING
+         replace block with before image from tail of file
+      end
    end
+
+   proceed with regular read
 end
 </pre>
 
@@ -301,25 +301,27 @@ write to a block.  The first time a block is written in a transaction
 the SHARED lock must be promoted to EXCLUSIVE and the old contents of the
 block must be written to the undo file.
 <pre>
-def blockWriteRequest(fileNumber, blockNumber, blockLocationInBufferCache)
-   if(currentUndo field is not none)    // already written to undo
+def blockWriteRequest(fileNumber, blockNumber)
+   if(block on list of those already written to undo)
       return
    end
 
-   form lock name [BLK-fileNumber-blockNumber]
+   form lock name 
    find lock in hash of locks held by process
    
    if(not lock already held by process in EXCLUSIVE mode)
-       blocking EXCLUSIVE lock conversion request
-       update local record of lock state
+      blocking EXCLUSIVE lock conversion request
+      update local record of lock state
    end
 
    append current (old) contents of block to tail of data file
    <i>fsync</i> data file
    add fileno-blockno to process undo block in undo file 
-       (written to two blocks for recoverability).
+      (written to two blocks for recoverability).
    <i>fsync</i> undo file
-   set currentProcess field of block in buffer cache to this process undo file
+
+   current process id will be added to PID in metadata portion of block
+      prior to its being written out to disk
 end
 </pre>
 At this point the block may be updated and safely written out to disk at any 
@@ -345,9 +347,10 @@ def commit()
    read undo slots in undo file  sequentially to determine list of updated blocks:
 
    for each block listed in undo slots
-      find block in buffer cache (loading if not found)
-      set currentProcess field in block to none
-      write out data block
+      read block
+      update block to clear PID
+      write updated block to before image tail of file
+      write updated block to file
    end
 
    <i>fsync</i> data file(s)
@@ -376,27 +379,10 @@ def rollback()
 end
 </pre>
 <h2>Process Recovery</h2>
-Process recovery is performed at startup and whenever another process
-finds a block containing a non-none currentUndo field.  An EXCLUSIVE
-lock is requested on [SVR-processId] for the failed process.  The
-request is nowait, since the failed process may have been restarted or 
-another process may have already begun recovery.  If the 
-lock is obtained the undo file is processed -- either committing or
-rolling back all the listed blocks, depending on whether the process status
-is COMMITTED (commit) or PENDING or ROLLEDBACK (rollback).
-If the lock cannot be obtained recovery is skipped
-and the earlier operation should be retried after a sleep interval
-(5 seconds?) to allow for recovery to be competed.
+Process recovery is performed at startup.  
 <p>
 <pre>
-def recoverProcess(undoFile)  // returns true when undo applied, 
-                                 // false when lock could not be obtained
-   nonblocking lock request for [SVR-processID] of undoFile
-
-   if(lock request failed)
-      return FALSE
-   end
-
+def recoverProcess()   
    committed = FALSE
 
    lookup process status of failed process
@@ -406,15 +392,23 @@ def recoverProcess(undoFile)  // returns true when undo applied,
    end
 
    for each block listed in undo slots of failed process
-      // These blocks won't be in our buffer cache, since they
-      // were updated by someone else's failed transaction
+      lock block SHARED 
+
+      if PID in block != current process id
+        continue  // block already recovered by some other process
+
+      promote lock to EXCLUSIVE
+
       if committed
-         read data block into local temp buffer   // NOT buffer cache
-         set currentProcess field to none
-         write out data block
+         read block
+         update block to clear PID
+         write updated block to before image tail of file
+         write updated block to file
       else
-         write block from tail of data file to corresponding data file location
+         write block from data file tail to corresponding data file location
       end
+
+      release lock (or wait till end)
    end
 
    <i>fsync</i> data file(s)
@@ -423,9 +417,6 @@ def recoverProcess(undoFile)  // returns true when undo applied,
    return TRUE
 end
 </pre>
-<h2>Startup and Shutdown</h2>
-Open issue:  recovery of all processes at startup.  Parallel?  Fewer
-processes than before?
 <h2>Deadlock</h2>
 Deadlock is detected by the Distributed Lock Manager OpenDLM.  The DLM chooses
 a victim and returns an error code.  It is the responsibility of the
@@ -434,14 +425,32 @@ higher level routine.  All lock requests in Clustered Genezzo must
 be written to handle this condition.
 <h2>Space Management Transactions</h2>
 Blocks used to manage space allocation in tablespaces will have
-high degrees of write contention.  solution TBD.
+high degrees of write contention.  
+Currently Genezzo stores the table directory and free space directory
+for each tablespace in block 0.  This prevents any concurrency between
+reads and writes.  One solution would involve moving distinct functions to
+different blocks and allocating multiple blocks of each type.  The block number
+of the first
+block of each table could be stored directly 
+in the data dictionary, and free extent
+lists could be maintained in multiple blocks at the beginning of the file.  
+Processes hashed by PID would begin their search for a free extent in
+different blocks.  Extents could be linked together to prevent contention
+over used extent maps.
+<p>
+We currently don't have any facility to support separate space management
+transactions.  If a user transaction rolls back for any reason the nested space
+management transaction also rolls back.  Space management transactions
+cannot commit prior to the user transaction commit.
 <h2>Data Dictionary</h2>
 At startup (before Havok routines are loaded) data dictionary tables
 are loaded and cached.  These blocks are not released on commit,
 and aren't visible to the lock manager.  Other machines won't be
 notified of changes.  We may only support distributed transactions
 against the non-system tablespace.  The data dictionary would remain
-in the system tablespace and would be cacheable.
+in the system tablespace and would be cacheable.  Currently the
+data dictionary is written when a table spills into another table of its
+tablespace, so the data dictionary is not read-only for DML.
 <h2>Performance</h2>
 The current Clustered Genezzo design has many areas of concern with
 respect to performance.  Several are related to the buffer cache

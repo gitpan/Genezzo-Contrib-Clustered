@@ -1,4 +1,9 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.19  Sun Dec 18 23:00:00 2005
+	Detect blocks needing recovery via PID in block.
+	Recover blocks and processes, resetting PID to zero.
+	Converted entire package to OO methods.
+
 0.18  Sun Oct 23 19:00:00 2005
         Writing PIDs to blocks.  No set to zero yet.
 	Print to STDERR, not STDOUT.

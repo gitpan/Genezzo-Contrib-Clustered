@@ -54,7 +54,7 @@ sub MakeSQL
     ($bigSQL = <<EOF_SQL) =~ s/^\#//gm;
 #REM prepare database for Genezzo::Contrib::Clustered
 #REM ATAThavok.sql and ATATsyshook.sql first
-#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1000, 'Genezzo::BufCa::BCFile', 'ReadBlock', 'ReadBlock_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'ReadBlock', 'SYSTEM', TODAY, '1');
+#insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1000, 'Genezzo::BufCa::BCFile', '_filereadblock', 'ReadBlock_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'ReadBlock', 'SYSTEM', TODAY, '1');
 #insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1001, 'Genezzo::BufCa::DirtyScalar', 'STORE', 'DirtyBlock_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'DirtyBlock', 'SYSTEM', TODAY, '1');
 #insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1002, 'Genezzo::GenDBI', 'Kgnz_Commit', 'Commit_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'Commit', 'SYSTEM', TODAY, '1');
 #insert into sys_hook (xid, pkg, hook, replace, xtype, xname, args, owner, creationdate, version) values (1003, 'Genezzo::GenDBI', 'Kgnz_Rollback', 'Rollback_Hook', 'oo_require', 'Genezzo::Contrib::Clustered::Clustered', 'Rollback', 'SYSTEM', TODAY, '1');
@@ -235,7 +235,9 @@ sub prepareUndo
     my %tied_hash = ();
     
     my $tie_val = 
-        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff);
+        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff,
+						    blocksize => 
+						    $blocksize);
     
     my $newkey = $tie_val->HPush($frozen_undoHeader);
     

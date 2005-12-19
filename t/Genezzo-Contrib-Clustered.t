@@ -24,6 +24,7 @@ my $TEST_COUNT;
 $TEST_COUNT = 2;
 
 # creates database and initilizes undo for test in second script
+# verifies that without G:C:C synced changes are not rolled back
 
 my $dbinit   = 1;
 my $gnz_home = File::Spec->catdir("t", "gnz_home");
@@ -34,7 +35,8 @@ rmtree($gnz_home, 1, 1);
 {
     my $fb = Genezzo::GenDBI->new(exe => $0, 
                              gnz_home => $gnz_home, 
-                             dbinit => $dbinit);
+                             dbinit => $dbinit,
+                             dbsize => "1M");
 
     unless (defined($fb))
     {
@@ -68,8 +70,10 @@ rmtree($gnz_home, 1, 1);
     use Genezzo::Havok;
     use Genezzo::Havok::SysHook;
 
-    ok(Genezzo::Contrib::Clustered::PrepUndo::prepareUndo(gnz_home => $gnz_home));
-
+    ok(Genezzo::Contrib::Clustered::PrepUndo::prepareUndo(
+	gnz_home => $gnz_home,
+	number_of_processes => 3,
+    	undo_blocks_per_process => 20));
 }
 
 

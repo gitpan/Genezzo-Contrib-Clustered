@@ -24,8 +24,8 @@ my $TEST_COUNT;
 $TEST_COUNT = 2;
 
 # uses database initialized in previous test
-# verifies committed changes are kept with commit command and 
-# uncommitted synced changes are rolled back with rollback command
+# adds large committed and rolled back rows
+# pads undo blocks to test multi-undo block commit and rollback
 
 my $dbinit   = 0;
 my $gnz_home = File::Spec->catdir("t", "gnz_home");
@@ -33,11 +33,12 @@ my $gnz_home = File::Spec->catdir("t", "gnz_home");
 #mkpath($gnz_home, 1, 0755);
 
 {
+    $Genezzo::Contrib::Clustered::Clustered::pad_undo = 1;
+
     use Genezzo::Util;
 
     my $dbh = Genezzo::GenDBI->connect($gnz_home, "NOUSER", "NOPASSWORD");
 #    my $dbh = Genezzo::GenDBI->new(exe => $0, gnz_home => $gnz_home,  defs => {_QUIETWHISPER=>0});
-
 
     unless (defined($dbh))
     {
@@ -46,66 +47,78 @@ my $gnz_home = File::Spec->catdir("t", "gnz_home");
     }
     ok(1);
 
-
     ok($dbh->do("startup"));
 
-    # now repeat sync, commit, rollback tests
-    ok(0,"failed update t1 to restart")
-        unless($dbh->do("update t1 set val='restart'"));
+    ok(0,"failed to create t3")
+        unless($dbh->do("create table t3(tid int, val char)"));
 
-    ok ($dbh->do("commit"));
+    my $bigrow = 'Z' x ($Genezzo::Block::Std::DEFBLOCKSIZE/5);
 
-    my $sth = $dbh->prepare("select val from t1");
+    my $numrows = 30;
+    my $cnt;
+    for($cnt = 0; $cnt < $numrows; $cnt++){
+	#print STDERR "inserting row $cnt\n";
+        ok(0,"failed to insert into t3")		
+            unless($dbh->do("insert into t3 values ($cnt, '$bigrow')"));
+    }
+
+    ok(0,"failed commit create t3")
+        unless($dbh->do("commit"));
+
+    my $sth = $dbh->prepare("select count(*) from t3");
 
     ok(0,"prepare select failed") unless defined($sth);
 
     ok(0,"execute failed")
         unless $sth->execute();
 
-    my $row = $sth->fetchrow_hashref();
+    my $row = $sth->fetchrow_arrayref();
 
     ok(0,"row not found")
         unless defined($row);
 
-    if($row->{val} eq "restart"){
+    if($row->[0] == $numrows){
         ok(1);
     }else{
-        ok(0,"expected 'restart', found $row->{val}");
+        ok(0,"expected $numrows, found $row->[0]");
     }
 
-    ok(0,"failed update t1 to third")
-        unless($dbh->do("update t1 set val='third'"));
-
-    ok(0,"failed sync")
-        unless($dbh->do("sync"));
-
-    ok(0,"failed update t1 to forth")
-        unless($dbh->do("update t1 set val='forth'"));
-
-    ok(0,"failed sync")
-        unless($dbh->do("sync"));
+    for($cnt = $numrows; $cnt < $numrows*2; $cnt++){
+	#print STDERR "inserting row $cnt\n";
+        ok(0,"failed to insert into t3")		
+            unless($dbh->do("insert into t3 values ($cnt, '$bigrow')"));
+    }
 
     #$Genezzo::Util::QUIETWHISPER = 0;
-    ok(0,"failed rollback")
+
+    ok(0,"failed rollback t3")
         unless($dbh->do("rollback"));
+
     #$Genezzo::Util::QUIETWHISPER = 1;
-    # now expect to find 'restart'
-    $sth = $dbh->prepare("select val from t1");
+
+    $sth = $dbh->prepare("select count(*) from t3");
 
     ok(0,"prepare select failed") unless defined($sth);
 
     ok(0,"execute failed")
         unless $sth->execute();
 
-    $row = $sth->fetchrow_hashref();
+    $row = $sth->fetchrow_arrayref();
 
     ok(0,"row not found")
         unless defined($row);
 
-    if($row->{val} eq "restart"){
+    if($row->[0] == $numrows){
         ok(1);
     }else{
-	print STDERR "expected 'restart', found \'$row->{val}\'\n";
-        ok(0,"expected 'restart', found \'$row->{val}\'");
+        ok(0,"expected $numrows, found $row->[0]");
     }
+
+    ok(0,"failed rollback 2")
+        unless($dbh->do("rollback"));
+
+    ok(0,"failed rollback 3")
+        unless($dbh->do("rollback"));
+
+    ok(1);
 }

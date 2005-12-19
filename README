@@ -67,21 +67,13 @@ TODO
        inline::C interface to provide deadlock return code distinct from
        other errors.  Need to modify GLock Perl code to throw SQL exception.
 
-  4)   [Genezzo update or documentation] Need to be able to add metadata to
-       DB data blocks.  Need to update block checksum, etc. when this is done.
-       [Now works, but only during write callback.  Cannot be done on blocks
-       read independently].
+  4)   [Genezzo update done]
 
-  5)   Use block metadata (above) to add process_id to each modified block
-       [done], and later clear (set to 0) process_id.  
+  5)   done.
 
   6)   [Genezzo update] Need way to invalidate entire buffer cache.
        Simply release all blocks, don't write them to disk (disk write
-       should already have been done in commit case).  Also need to
-       be able to release single blocks on demand -- this would be used
-       when async-callback lock request support is added.  Single
-       block release is also used when recovering a block.  Also need
-       to be able to request re-read of a block.
+       should already have been done in commit case). 
 
   7)   Invalidate buffer cache (using new mechanism above) before releasing 
        all locks on commit or rollback.  Actually only invalidate 
@@ -116,9 +108,14 @@ TODO
        Havok/syshook routines won't run if database cannot be opened due
        to corruption.
 
+  13)  [Genezzo redesign] Storing table directory and free space list in
+       block zero of each tablespace prevents any concurrency of writes
+       with reads.  Also cached structures become invalid whenever block
+       zero is written.
+
   99)  After the above, complete rest of development per Design Document:
-   a)  Detect blocks needing recovery via process_id in block
-   b)  Recover dead processes
+   a)  [Done] Detect blocks needing recovery via process_id in block.
+   b)  [Done] Recover dead processes
    c)  etc...
 
 COPYRIGHT AND LICENCE

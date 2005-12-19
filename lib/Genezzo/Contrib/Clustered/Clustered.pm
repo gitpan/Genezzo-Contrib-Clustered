@@ -16,26 +16,16 @@ use FreezeThaw;
 use IO::File;
 use Genezzo::Block::RDBlock;
 use warnings::register;
+use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.18';
-
-our $init_done;
+our $VERSION = '0.19';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
 our $Commit_Hook;
 our $Rollback_Hook;
 
-# since we are single-threaded anyway, lets create our own context
-# here
-our $cl_ctx;
-our $undo_file;
-
-# since we are single-threaded, for now use this flag to avoid
-# processing write to buffer during read
-our $inReadBlock = 0;
-
-# constant blocks 
+# Constant blocks. 
 our $COMMITTED_BUFF;
 our $ROLLEDBACK_BUFF;
 our $PENDING_BUFF;
@@ -48,109 +38,147 @@ our $CLEAR_CODE;
 
 our $UNDO_BLOCKSIZE;
 
+# Can be set externally for testing.
+our $starting_pid;
+# If true pad out undo blocks to only fit two rows per block.
+our $pad_undo;
+
 ####################################################################
-# called by BufCa::BCFile::_filewriteblock
-# sets proc_num in block
+# Called by BufCa::BCFile::_filewriteblock.
+# Sets proc_num in block.
 sub _init_filewriteblock
 {
     my $self = shift;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+
+    my $cl_ctx = $self->{cl_ctx};
     my ($wrapped_self, $fname, $fnum, $fh, $bnum, $refbuf, $hdrsize, 
 	$bce) = @_;
 
-    if(!defined($init_done) || !$init_done){
+    if(!defined($self->{init_done}) || !$self->{init_done}){
         $self->_init();
     }
 
     return 1
         unless (defined($bce));
 
-    whoami;
+    my $bceInfo = $bce->GetInfo();
 
-    if (1)
+    return 1
+	unless (defined($bceInfo));
+
+    if (exists($bceInfo->{mailbox})
+	&& exists($bceInfo->{mailbox}->{'Genezzo::Block::RDBlock'}))
     {
-        my $foo = $bce->GetInfo();
-
-        return 1
-            unless (defined($foo));
-
-        if (exists($foo->{mailbox})
-            && exists($foo->{mailbox}->{'Genezzo::Block::RDBlock'}))
-        {
-            my $rdblock = $foo->{mailbox}->{'Genezzo::Block::RDBlock'};
-            greet $rdblock->_set_meta_row("PID", ["PID", $cl_ctx->{proc_num}]);
-        }
+	my $rdblock = $bceInfo->{mailbox}->{'Genezzo::Block::RDBlock'};
+	$rdblock->_set_meta_row("PID", [$cl_ctx->{proc_num}]);
     }
+
     return 1;
 }
 
 ####################################################################
-# wraps Genezzo::BufCa::BCFile::ReadBlock
+# Wraps Genezzo::BufCa::BCFile::_filereadblock.
 sub ReadBlock
 {
     my $self = shift;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my ($wrapped_self, $fname, $fnum, $fh, $bnum, $refbuf_in, $hdrsize) = @_;
 
-    my @tmpArgs = @_;
-    my $wrapped_self = shift @tmpArgs;
-    my %args = (@tmpArgs);
-    my $fnum = $args{filenum};
-    my $bnum = $args{blocknum};
     whisper "Genezzo::Contrib::Clustered::ReadBlock(filenum => $fnum, blocknum => $bnum)\n";
+    #print STDERR "Genezzo::Contrib::Clustered::ReadBlock(filenum => $fnum, blocknum => $bnum)\n";
 
-    if(!defined($init_done) || !$init_done){
+    if(!defined($self->{init_done}) || !$self->{init_done}){
         $self->_init();
     }
 
-    my $gtxLock = $cl_ctx->{gtxLock};
-    # add in fnum later...
+    my $gtxLock = $self->{cl_ctx}->{gtxLock};
+    # Add in fnum later...
     $gtxLock->lock(lock => $bnum, shared => 1);
     
-    # avoid processing DirtyBlock during read
-    $inReadBlock = 1;
+    # Avoid processing DirtyBlock during read.
+    $self->{inReadBlock} = 1;
+
+    my ($block_pid, $refbuf, $blocksize) = 
+	$self->GetBlockWithPID($fnum, $bnum);
+
+    if(($block_pid != 0) && ($block_pid != $self->{cl_ctx}->{proc_num})){
+	# Need to rollback or commit the block.
+	# Promote lock to EX.
+	$gtxLock->lock(lock => $bnum, shared => 0);
+
+	my $block_tx_state = $ROLLEDBACK_CODE;
+
+	if($block_pid != -1){
+	    # We can read state unlocked, since if tx was in progress
+	    # block would be locked (&& it is a single-char read).
+	    my $block_tx_state = $self->ReadTransactionState($block_pid);
+	}
+	
+	if(($block_tx_state eq $COMMITTED_CODE)||
+	   ($block_tx_state eq $CLEAR_CODE))  # shouldn't have PID!
+	{
+	    $self->ClearPID($fnum, $bnum, $refbuf, $blocksize);
+	    $self->ReadOrWriteBlock($fnum, $bnum, "WRITE_TAIL", $refbuf);
+	    $self->ReadOrWriteBlock($fnum, $bnum, "WRITE", $refbuf);
+	}else{
+	    # ROLLEDBACK_CODE || PENDING_CODE
+	    $self->CopyBlockToOrFromTail($fnum,$bnum,"FROM");
+	}
+    }
+
     my $ret = &$ReadBlock_Hook(@_);
-    $inReadBlock = 0;
+    $self->{inReadBlock} = 0;
 
     return $ret;
 }
 
 ####################################################################
-# wraps Genezzo::BufCa::DirtyScalar::STORE
+# Wraps Genezzo::BufCa::DirtyScalar::STORE.
 sub DirtyBlock
 {
     my $self = shift;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
 
     my $h;
     my $dirty;
 
     if($_[0]->{bce}){
         $h = $_[0]->{bce}->GetInfo();
-	# can't rely on dirty to make decisions, since it is cleared 
+	# Can't rely on dirty to make decisions, since it is cleared 
 	# whenever block is written out of buffer cache
-	# (on cache full, sync, etc.)
+	# (on cache full, sync, etc.).
         $dirty = $_[0]->{bce}->_dirty();
     }
 
-    if(!defined($init_done) || !$init_done){
+    if(!defined($self->{init_done}) || !$self->{init_done}){
         $self->_init();
     }
  
-    if(!$inReadBlock &&
+    if(!$self->{inReadBlock} &&
        defined($h) && 
         ((!(defined($h->{filenum}))) || (!(defined($h->{blocknum})))))
     {
-        whisper "Genezzo::Contrib::Clustered::DirtyBlock bad undefined\n";
+	# One cause is in-memory index initialization.
+	# Dict::_loadDictMemStructs=>Index::btHash::STORE...
+        #whisper 
+	#    "G:C:C::DirtyBlock bad undefined ($self->{inReadBlock})\n";
+	#cluck "bad undefined";
     }
 
-    if(!$inReadBlock &&
+    if(!$self->{inReadBlock} &&
        defined($h) && 
        defined($h->{filenum}) && defined($h->{blocknum}))
     {
         whisper "Genezzo::Contrib::Clustered::DirtyBlock(filenum => $h->{filenum}, blocknum => $h->{blocknum}, dirty => $dirty)\n";
+	#print STDERR "Genezzo::Contrib::Clustered::DirtyBlock(filenum => $h->{filenum}, blocknum => $h->{blocknum}, dirty => $dirty)\n";
 
 	my $blockKey = $h->{filenum} . "_" . $h->{blocknum};
 
         if(!defined($cl_ctx->{dirty_blocks}->{$blockKey})){
 	    if(!($cl_ctx->{have_begin_trans})){
-		BeginTransaction();
+		$self->BeginTransaction();
 		$cl_ctx->{have_begin_trans} = 1;
 	    }
 
@@ -162,10 +190,8 @@ sub DirtyBlock
 	    # add in fnum later...
 	    $gtxLock->lock(lock => $h->{blocknum}, shared => 0);
 
-	    CopyBlockToOrFromTail($h->{filenum}, $h->{blocknum}, "TO");
-	    AddAndWriteUndo($h->{filenum}, $h->{blocknum});
-
-	    # add undo proc id entry to block in buffer cache (how?) TODO
+	    $self->CopyBlockToOrFromTail($h->{filenum}, $h->{blocknum}, "TO");
+	    $self->AddAndWriteUndo($h->{filenum}, $h->{blocknum});
         }
     }
 
@@ -173,90 +199,158 @@ sub DirtyBlock
 }
 
 ####################################################################
-#wraps Genezzo::GenDBI::Kgnz_Commit
+sub ClearPID
+{
+    my ($self, $fnum, $bnum, $refbuf, $blocksize) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+
+    if(!$self->VerifyChecksum($refbuf, $blocksize)){
+	return;  # Don't mess with corrupted block.
+    }
+
+    my %tied_hash = ();
+    my $tie_val =
+        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => $refbuf,
+						    blocksize => $blocksize);
+    $tie_val->_set_meta_row("PID", [0]);
+    $self->UpdateChecksum($fnum, $bnum, $refbuf, $blocksize);
+}
+
+####################################################################
+sub CommitFunc
+{
+    my ($self, $fileno, $blockno) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $affected = 0;
+
+    my $gtxLock = $self->{cl_ctx}->{gtxLock};  # Locks needed for startup case;
+                                               # otherwise redundant.
+    # Lock block SH.
+    $gtxLock->lock(lock => $blockno, shared => 1); 
+
+    my ($data_block_pid, $refbuf, $blocksize) = 
+	$self->GetBlockWithPID($fileno, $blockno);
+
+    if($data_block_pid == $self->{cl_ctx}->{proc_num})
+    {
+	# Only commit your own PID, as someone else (in crash case)
+	# may have already recovered and used block.
+	# Promote lock to EX.
+	$gtxLock->lock(lock => $blockno, shared => 0);	    
+	$self->ClearPID($fileno, $blockno, $refbuf, $blocksize);
+	$self->ReadOrWriteBlock($fileno, $blockno, "WRITE_TAIL", $refbuf);
+	$self->ReadOrWriteBlock($fileno, $blockno, "WRITE", $refbuf);
+	$affected = 1;
+    }elsif($data_block_pid == -1){
+        # Promote lock to EX.
+        $gtxLock->lock(lock => $blockno, shared => 0);
+	# before-image should contain desired data
+	$self->CopyBlockToOrFromTail($fileno,$blockno,"FROM");	
+	$affected = 1;
+    }
+
+    # At startup could release each lock here.
+    return $affected;
+}
+
+####################################################################
+# Wraps Genezzo::GenDBI::Kgnz_Commit.
 sub Commit
 {
     my $self = shift;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
 
     whisper "Genezzo::Contrib::Clustered::Commit()\n";
 
     my @tmpArgs = @_;
     my $wrapped_self = shift @tmpArgs;
 
-    if(!defined($init_done) || !$init_done){
+    if(!defined($self->{init_done}) || !$self->{init_done}){
         $self->_init();
     }
 
-    # assume this writes all blocks in buffer cache to disk
+    # Assume this writes all blocks in buffer cache to disk.
     my $ret = &$Commit_Hook(@_);
 
-    WriteTransactionState($COMMITTED_BUFF);
+    $self->WriteTransactionState($COMMITTED_BUFF);
 
-    # use $cl_ctx->{dirty_blocks} to find all affected blocks 
-    # and now clear undo proc id in all of them 
-    # and write them all again (with sync)
+    # Could use $cl_ctx->{dirty_blocks} to find all affected blocks.
+    # For Now use undo from disk.
+    # Clear undo proc id in all blocks.
+    $self->ApplyFuncToUndo(\&CommitFunc);
 
-    # release all blocks in buffer cache (how?)
+    # TODO: Release all blocks in buffer cache (how?).
 
-    my $gtxLock = $cl_ctx->{gtxLock};
+    my $gtxLock = $self->{cl_ctx}->{gtxLock};
     $gtxLock->unlockAll();
     $cl_ctx->{dirty_blocks} = {};
 
-    ResetUndo();
-    WriteTransactionState($CLEAR_BUFF);
-    $cl_ctx->{have_begin_trans} = 0;
+    $self->ResetUndo();
+    $self->WriteTransactionState($CLEAR_BUFF);
+    $self->{cl_ctx}->{have_begin_trans} = 0;
 
     return $ret;
 }
 
 ####################################################################
-# wraps Genezzo::GenDBI::Kgnz_Rollback
+# Wraps Genezzo::GenDBI::Kgnz_Rollback.
 sub Rollback
 {
     my $self = shift;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
 
     whisper "Genezzo::Contrib::Clustered::Rollback()\n";
 
     my @tmpArgs = @_;
     my $wrapped_self = shift @tmpArgs;
 
-    if(!defined($init_done) || !$init_done){
+    if(!defined($self->{init_done}) || !$self->{init_done}){
         $self->_init();
     }
 
-    WriteTransactionState($ROLLEDBACK_BUFF);
+    $self->WriteTransactionState($ROLLEDBACK_BUFF);
 
-    Rollback_Internal();
+    $self->Rollback_Internal();
 
-    ResetUndo();
-    WriteTransactionState($CLEAR_BUFF);
+    $self->ResetUndo();
+    $self->WriteTransactionState($CLEAR_BUFF);
     $cl_ctx->{have_begin_trans} = 0;
 
-    my $gtxLock = $cl_ctx->{gtxLock};
+    my $gtxLock = $self->{cl_ctx}->{gtxLock};
     $gtxLock->unlockAll();
     $cl_ctx->{dirty_blocks} = {};
 
-    # currently this generates lots of writes, and another transaction
-    # which is never committed.  Investigate.
     my $ret = &$Rollback_Hook(@_);
 
-    # for now, we never want to rollback this extra info, so
-    ResetUndo();
-    WriteTransactionState($CLEAR_BUFF);
+    # We shouldn't be generating bogus undo anymore.  
+    # Leave this in just in case.
+    $self->ResetUndo();
+    $self->WriteTransactionState($CLEAR_BUFF);
     $cl_ctx->{have_begin_trans} = 0;
     $cl_ctx->{dirty_blocks} = {};
-    # we have accumulated more locks.  for now free them
-    $gtxLock->unlockAll();
+    # We have accumulated more locks during the rollback.
+    # These proctect the dictionary tables which were reloaded.
+    # They also include block zero (directory & space management), etc.
+    # TODO:  We can't free the locks, as the blocks would be unprotected.
+    #$gtxLock->unlockAll();
 
     return $ret;
 }
 
 ####################################################################
-# what about locking?
-sub Rollback_Internal()
+# For each block in undo, for each row in block, apply func.
+sub ApplyFuncToUndo
 {
-    whisper "beginning Rollback_Internal()\n";
-    # for each block in undo, for each row in block, replace disk contents
+    my ($self, $func) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    # func takes args of form:  my ($self, $fileno, $blockno) = @_;
+    my $affected = 0;
+    my $cl_ctx = $self->{cl_ctx};
+
+    whisper "Genezzo::Contrib::Clustered::ApplyFuncToUndo()\n";
+    # For each block in undo, for each row in block, apply func.
     my $undo_blockid;
     my $tx_id;
 
@@ -264,24 +358,28 @@ sub Rollback_Internal()
 	$undo_blockid < ($cl_ctx->{undoHeader}->{blocks_per_proc})/2;
 	$undo_blockid++)
     {
-        whisper "rollback internal undo_blockid = $undo_blockid\n";
+        # TODO: Read both of paired undo blocks and choose good one.
+        whisper 
+	    "G:C:C:ApplyFuncToUndo undo_blockid = $undo_blockid\n";
 	# utilize paired blocks later...
 	my $offset = $undo_blockid * 2;
 	
 	my $blk = ($cl_ctx->{proc_undo_blocknum} + $offset)*$UNDO_BLOCKSIZE;
-	$undo_file->sysseek($blk, 0)
+	$self->{undo_file}->sysseek($blk, 0)
 	    or die "bad seek - file undo block $blk: $! \n";
 
 	my $buff;
 
-	Genezzo::Util::gnz_read ($undo_file, $buff, $UNDO_BLOCKSIZE)
+	Genezzo::Util::gnz_read ($self->{undo_file}, $buff, $UNDO_BLOCKSIZE)
 	    == $UNDO_BLOCKSIZE
 	    or die 
             "bad read - file undo : block $blk : $! \n";
     
 	my %tied_hash = ();
 	my $tie_val =
-        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff);
+        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff,
+						    blocksize => 
+						    $UNDO_BLOCKSIZE);
 
 	my $frozen_row = $tied_hash{1}; 
 	my ( $row ) = FreezeThaw::thaw $frozen_row;
@@ -305,7 +403,12 @@ sub Rollback_Internal()
 
 	    ( $row ) = FreezeThaw::thaw $frozen_row;
 
-	    CopyBlockToOrFromTail($row->{f}, $row->{b}, "FROM");
+	    whisper 
+		"G:C:C:ApplyFuncToUndo file ($row->{f}) block ($row->{b})\n";
+
+	    # Apply func.
+	    $affected += &$func($self, $row->{f}, $row->{b});
+
 	    $rownum++;
 	}
 
@@ -315,25 +418,125 @@ sub Rollback_Internal()
 	}
     }
 
-    whisper "finished Rollback_Internal()\n";
+    whisper "G:C:C:ApplyFuncToUndo() finished\n";
+    return $affected;
 }
 
+####################################################################
+# Returns (PID, refbuf, datablocksize).
+# PID is 0 for none found, -1 for checksum failure (after 3 tries).
+sub GetBlockWithPID
+{
+    my ($self, $fileno, $blockno) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
 
-# copies before image of block to end of file
+    my $retry;
+    my $pass = 0;
+    my $refbuf;
+    my $datablocksize;
+
+    for($retry = 0; $retry < 3; $retry++){
+        # Check for pid in block before rolling back.	    
+        # pre-read block into temp rdblock to check if undo needed
+        ($refbuf, $datablocksize) = 
+            $self->ReadOrWriteBlock($fileno, $blockno, "READ");
+
+        $pass = $self->VerifyChecksum($refbuf, $datablocksize);
+
+        if($pass){
+            last;
+        }
+
+        if($retry == 1){
+	    sleep(1);
+	}
+    }
+
+    if(!$pass){
+	print STDERR "GetBlockWithPID ($fileno,$blockno) failed checksum!\n";
+	return (-1, $refbuf, $datablocksize);
+    }
+
+    my %data_tied_hash = ();
+    my $data_tie_val =
+	tie %data_tied_hash, 
+	'Genezzo::Block::RDBlock', (refbufstr => $refbuf,
+				    blocksize => $datablocksize);
+    my $data_pid_row = $data_tie_val->_get_meta_row("PID");
+    my $data_block_pid = 0;
+
+    if(defined($data_pid_row)){
+	$data_block_pid = $data_pid_row->[0];
+    }
+
+    whisper "G:C:C:GetBlockWithPID data block pid = $data_block_pid\n";
+    return ($data_block_pid, $refbuf, $datablocksize);
+}    
+
+####################################################################
+sub RollbackFunc
+{
+    my ($self, $fileno, $blockno) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $affected = 0;
+    my $cl_ctx = $self->{cl_ctx};
+
+    my $gtxLock = $cl_ctx->{gtxLock};  # Locks needed for startup case;
+                                       # otherwise redundant.
+    # Lock block SH.
+    $gtxLock->lock(lock => $blockno, shared => 1); 
+
+    my ($data_block_pid) = $self->GetBlockWithPID($fileno, $blockno);
+
+    if(($data_block_pid == $cl_ctx->{proc_num}) ||
+       ($data_block_pid == -1))
+    {
+	# Only recover your own PID, as someone else (in crash case)
+	# may have already recovered and used block.
+	# Promote lock to EX.
+	$gtxLock->lock(lock => $blockno, shared => 0);	    
+	$self->CopyBlockToOrFromTail($fileno, $blockno, "FROM");
+	$affected = 1;
+    }
+
+    # At startup could release each lock here.
+    return $affected;
+}
+
+####################################################################
+sub Rollback_Internal
+{
+    my ($self) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+
+    whisper "G:C:C:Rollback_Internal()\n";
+    # for each block in undo, for each row in block, replace disk contents
+
+    my $affected = $self->ApplyFuncToUndo(\&RollbackFunc);
+
+    whisper "G:C:C:Rollback_Internal() finished\n";
+    return $affected;
+}
+
+####################################################################
+# Copies before image of block to end of file.
 # direction TO:    copy from body to tail
 #           FROM:  copy from tail to body
+# Optionally call xform_func with block contents before write (unused).
 sub CopyBlockToOrFromTail
 {
-    my ($fileno, $blockno, $direction) = @_;
+    my ($self, $fileno, $blockno, $direction, $xform_func) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
 
-    whisper "CopyBlockToOrFromTail $direction\n";
+    whisper "G:C:C:CopyBlockToOrFromTail $direction\n";
 
     my $fh = $cl_ctx->{open_files}->{$fileno};
     my $full_filename = 
 	$cl_ctx->{undoHeader}->{files}->{$fileno}->{full_filename};
 
     if(!defined($fh)){
-        whisper "opening $fileno\n";
+        whisper "G:C:C:CopyBlockToOrFromTail opening $fileno\n";
 
         $fh = new IO::File "+<$full_filename"
             or die "open $full_filename failed: $!\n";
@@ -372,6 +575,10 @@ sub CopyBlockToOrFromTail
         or die 
             "bad read - file $full_filename : src $src_offset : $! \n";
 
+    if(defined($xform_func)){
+	&$xform_func($self, $fileno, $blockno, \$buf, $file_blocksize);
+    }
+
     $fh->sysseek ($dst_offset, 0 )
         or die "bad seek - file $full_filename : dst $dst_offset : $!";
 
@@ -385,10 +592,79 @@ sub CopyBlockToOrFromTail
     #}
 }
 
-sub WriteTransactionState{
-    my ($state_buff) = @_;
+####################################################################
+# Reads block from file, or writes block to file.
+# Direction READ: read block and return (refbuf, file_blocksize)  
+#           WRITE: write writebuf to file
+#           WRITE_TAIL write writebuf to tail of file
+sub ReadOrWriteBlock
+{
+    my ($self, $fileno, $blockno, $direction, $refbuf) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
 
-    my $blk = $cl_ctx->{proc_state_blocknum}*$UNDO_BLOCKSIZE;
+    whisper "G:C:C:ReadOrWriteBlock $direction\n";
+
+    my $fh = $cl_ctx->{open_files}->{$fileno};
+    my $full_filename = 
+	$cl_ctx->{undoHeader}->{files}->{$fileno}->{full_filename};
+
+    if(!defined($fh)){
+        whisper "G:C:C:ReadOrWriteBlock opening $fileno\n";
+
+        $fh = new IO::File "+<$full_filename"
+            or die "open $full_filename failed: $!\n";
+
+	$cl_ctx->{open_files}->{$fileno} = $fh;
+    }
+
+    my $file_blocksize = 
+	$cl_ctx->{undoHeader}->{files}->{$fileno}->{blocksize};
+    my $file_numblocks = 
+	$cl_ctx->{undoHeader}->{files}->{$fileno}->{numblocks};
+    my $file_hdrsize = $cl_ctx->{undoHeader}->{files}->{$fileno}->{hdrsize};
+
+    my $offset;
+
+    $offset = $file_hdrsize + ($file_blocksize * $blockno);
+
+    if($direction eq "WRITE_TAIL"){
+	$direction = "WRITE";
+	$offset += ($file_blocksize * $file_numblocks);
+    }
+
+    $fh->sysseek ($offset, 0 )
+        or die "bad seek - file $full_filename : src $offset : $!";
+
+    if($direction eq "READ"){
+	my $buf;
+
+	Genezzo::Util::gnz_read ($fh, $buf, $file_blocksize)
+	    == $file_blocksize
+	    or die 
+            "bad read - file $full_filename : $offset : $! \n";
+	
+	return (\$buf, $file_blocksize);
+    }elsif($direction eq "WRITE"){
+	Genezzo::Util::gnz_write ($fh, $$refbuf, $file_blocksize)
+	    == $file_blocksize
+	    or die 
+	    "bad write - file $full_filename : $offset : $! \n";
+  
+	$fh->sync;
+    }else{
+        die "invalid direction $direction in ReadOrWriteBlock";
+    }
+}
+
+####################################################################
+sub WriteTransactionState
+{
+    my ($self, $state_buff) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $undo_file = $self->{undo_file};
+
+    my $blk = $self->{cl_ctx}->{proc_state_blocknum}*$UNDO_BLOCKSIZE;
     $undo_file->sysseek($blk, 0)
 	or die "bad seek - file undo block $blk: $! \n";
     Genezzo::Util::gnz_write($undo_file, $state_buff, $UNDO_BLOCKSIZE)
@@ -396,11 +672,22 @@ sub WriteTransactionState{
     $undo_file->sync;
 }
 
+####################################################################
 # returns single character code
-sub ReadTransactionState(){
+sub ReadTransactionState
+{
+    my ($self, $pid) = @_;  # if undefined uses $cl_ctx->{proc_num}
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $undo_file = $self->{undo_file};
+    my $cl_ctx = $self->{cl_ctx};
     my $buf;
 
-    my $blk = $cl_ctx->{proc_state_blocknum}*$UNDO_BLOCKSIZE;
+    if(!defined($pid)){
+	$pid = $cl_ctx->{proc_num};
+    }
+
+    # Was $self->{cl_ctx}->{proc_state_blocknum}.
+    my $blk = ($pid +1)*$UNDO_BLOCKSIZE;
     $undo_file->sysseek($blk, 0)
 	or die "bad seek - file undo block $blk: $! \n";
     Genezzo::Util::gnz_read($undo_file, $buf, $UNDO_BLOCKSIZE)
@@ -409,68 +696,108 @@ sub ReadTransactionState(){
     return substr($buf,0,1);
 }
 
+####################################################################
 sub ResetUndo
 {
+    my ($self) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
+
     $cl_ctx->{tx_id} = $cl_ctx->{tx_id} + 1;
 
     $cl_ctx->{current_undo_blockid} = 0;
 
     # create empty undo block
-    CreateUndoBlock();
+    $self->CreateUndoBlock();
     # write it out
-    WriteUndoBlock();
+    $self->WriteUndoBlock();
 }
 
+####################################################################
 sub BeginTransaction
 {
+    my ($self) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
+
     whisper "Genezzo::Contrib::Clustered::BeginTransaction\n";
-    # increment transaction id
+    # Increment transaction id.
     $cl_ctx->{tx_id} = $cl_ctx->{tx_id} + 1;
-    # mark transaction pending
-    WriteTransactionState($PENDING_BUFF);
+    # Mark transaction pending.
+    $self->WriteTransactionState($PENDING_BUFF);
 
     $cl_ctx->{current_undo_blockid} = 0;
 
-    # create empty undo block
-    CreateUndoBlock();
-    # write it out
-    WriteUndoBlock();
+    # Create empty undo block.
+    $self->CreateUndoBlock();
+    # Write it out.
+    $self->WriteUndoBlock();
 }    
-   
+
+####################################################################   
 sub CreateUndoBlock
 {
+    my ($self) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
+
     my $buff = "\0" x $UNDO_BLOCKSIZE;
     my %tied_hash = ();
     my $tie_val =
-        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff);
+        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff,
+						    blocksize => 
+						    $UNDO_BLOCKSIZE);
     $cl_ctx->{current_undo_block} = $tie_val;
     $cl_ctx->{current_undo_block_buf} = \$buff;
-    # add tx id
-    # this should be metadata; for now store it as 1st row
+    # Add tx id.
+    # This should be metadata; for now store it as 1st row.
     my $row = { "tx" => $cl_ctx->{tx_id} };
     my $frozen_row = FreezeThaw::freeze $row;
     $cl_ctx->{current_undo_block}->HPush($frozen_row);
 }
 
+####################################################################
 sub AddAndWriteUndo
 {
-    whisper "AddAndWriteUndo\n";
-    my ($fileno, $blockno) = @_;
-    my $row = { "f" => $fileno,
-                "b" => $blockno };
+    my ($self,$fileno, $blockno) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
+
+    whisper "G:C:C:AddAndWriteUndo\n";
+
+    my $row;
+
+    if($pad_undo == 0){
+	$row = { "f" => $fileno,
+		    "b" => $blockno };
+    }else{
+	my $pad = "X" x ($UNDO_BLOCKSIZE/3);
+	$row = { "f" => $fileno,
+		    "b" => $blockno,
+		    "pad" => $pad };
+    }
+
     my $frozen_row = FreezeThaw::freeze $row;
     my $newkey = $cl_ctx->{current_undo_block}->HPush($frozen_row);
    
     if(defined($newkey)){
-        WriteUndoBlock();
+        $self->WriteUndoBlock();
 	return;
     }
 
-    # current block is full (and already written)
-    # create new block
-    CreateUndoBlock();
+    # Current block is full (and already written).
+    # Create new block.
+
+    $self->CreateUndoBlock();
     # move to next block
-    $cl_ctx->{current_undo_blockid} = $cl_ctx->{current_undo_blockid} + 1;
+    $cl_ctx->{current_undo_blockid} += 1;
+
+    if($pad_undo) {
+	#print STDERR 
+	#    "Moving to next undo block ($cl_ctx->{current_undo_blockid})\n";
+	#cluck "Moving";
+    }
+
     my $offset = $cl_ctx->{current_undo_blockid}*2;
 
     if(($offset) >= ($cl_ctx->{undoHeader}->{blocks_per_proc}-1))
@@ -479,12 +806,18 @@ sub AddAndWriteUndo
     }
 
     $newkey = $cl_ctx->{current_undo_block}->HPush($frozen_row);
-    WriteUndoBlock();
+    $self->WriteUndoBlock();
 }
 
+####################################################################
 sub WriteUndoBlock
 {
-    whisper "write undo block\n";
+    my ($self) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
+    my $undo_file = $self->{undo_file};
+
+    whisper "G:C:C:WriteUndoBlock\n";
     # note paired blocks means we multiply blockid by 2
     my $offset = $cl_ctx->{current_undo_blockid} * 2;
 
@@ -496,6 +829,7 @@ sub WriteUndoBlock
     $undo_file->sysseek($blk, 0)
 	or die "bad seek - file undo block $blk: $! \n";
 
+    # TODO: Add a checksum so we can tell which block is good.
     my $bp = $cl_ctx->{current_undo_block_buf};
     Genezzo::Util::gnz_write($undo_file, $$bp, $UNDO_BLOCKSIZE)
         == $UNDO_BLOCKSIZE
@@ -507,25 +841,99 @@ sub WriteUndoBlock
     $undo_file->sync;
 }
 
+####################################################################
+# TODO: Modify when Genezzo::BufCA::BCFile::_filereadblock is refactored.
+# Returns 1 for success, 0 for failure.
+sub VerifyChecksum
+{
+    my ($self, $refbuf, $blocksize) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    
+    # XXX XXX: compute a basic 32 bit checksum
+#   my $basicftr = pack($Genezzo::Block::Std::FtrTemplate, 0, 0, 0);
+    my $packlen  = $Genezzo::Block::Std::LenFtrTemplate;
+
+    my $skippy = $blocksize-$packlen; # skip to end of buffer
+    # get the checksum
+    my @outarr = unpack("x$skippy $Genezzo::Block::Std::FtrTemplate", 
+			$$refbuf);
+
+    # zero out the checksum because it wasn't part of the original
+    # calculation
+#   substr($$refbuf, $blocksize-$packlen, $packlen) = $basicftr;
+
+    # calculate checksum and test if matches stored value
+    my $ckTempl  = '%32C' . ($blocksize - $packlen); # skip the footer
+    my $cksum = unpack($ckTempl, $$refbuf) % 65535;
+    my $ck1 = pop @outarr;
+
+    if ($cksum == $ck1)
+    {
+	return 1;
+    }else{
+	return 0;
+    }
+}
+
+####################################################################
+# TODO: Modify when Genezzo::BufCA::BCFile::_filewriteblock is refactored.
+sub UpdateChecksum
+{
+    my ($self, $fnum, $bnum, $refbuf, $blocksize) = @_;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+
+    # XXX: build a basic header with the file number, block number,
+    # etc 
+    # XXX XXX fileblockTmpl
+    my $basichdr = pack($Genezzo::Block::Std::fileblockTmpl, $fnum, $bnum); 
+    my $packlen  = $Genezzo::Block::Std::fbtLen;
+
+    substr($$refbuf, 0, $packlen) = $basichdr;
+
+    # XXX XXX: compute a basic 32 bit checksum 
+    # -- see perldoc unpack
+#   my $basicftr = pack($Genezzo::Block::Std::FtrTemplate, 0, 0, 0);
+    $packlen     = $Genezzo::Block::Std::LenFtrTemplate;
+
+    # zero out the checksum because the old checksum isn't part of
+    # the new checksum
+#   substr($$refbuf, $blocksize-$packlen, $packlen) = $basicftr;
+
+    my $ckTempl  = '%32C' . ($blocksize - $packlen); # skip the footer
+    my $cksum    = unpack($ckTempl, $$refbuf) % 65535;
+    my $basicftr = pack($Genezzo::Block::Std::FtrTemplate, 0, 0, $cksum);
+    # add the checksum to the end of the block
+    substr($$refbuf, $blocksize-$packlen, $packlen) = $basicftr;
+}
+
+####################################################################
+# Not a method.
 sub InitConstBuff(\$$)
 {
     my ($b, $code) = @_;
 
     my $buff = $code;
     $buff = $buff. ("-" x 9);
-    my $procstr = sprintf("%10d", $cl_ctx->{proc_num});
+    # Can't store PID if shared between procs.
+    # my $procstr = sprintf("%10d", $cl_ctx->{proc_num});
+    my $procstr = sprintf("%10d", 0);
     $buff = $buff . $procstr;
     $buff = $buff . ( "-" x ($UNDO_BLOCKSIZE - 20) );
     $$b = $buff;
 }
 
+####################################################################
 sub _init
 {
     my $self = shift;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
 
-    if(defined($init_done) && $init_done){
+    if(defined($self->{init_done}) && $self->{init_done}){
         return;
     }
+
+    #cluck "_init";
 
     whisper "Genezzo::Contrib::Clustered::_init called\n";
 
@@ -546,41 +954,55 @@ sub _init
         File::Spec->rel2abs(
             File::Spec->catfile($fhts, $undo_filename));
 
-    $undo_file = new IO::File "+<$full_filename"
+    $self->{undo_file} = new IO::File "+<$full_filename"
         or die "sysopen $full_filename failed: $!\n";
 
-    #construct an empty byte buffer
+    # Construct an empty byte buffer.
     my $buff;
 
-    Genezzo::Util::gnz_read($undo_file, $buff, $UNDO_BLOCKSIZE) 
+    Genezzo::Util::gnz_read($self->{undo_file}, $buff, $UNDO_BLOCKSIZE) 
         == $UNDO_BLOCKSIZE
     	or die "bad read - file $full_filename: $!\n";
     
     my %tied_hash = ();
     my $tie_val =
-        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff);
+        tie %tied_hash, 'Genezzo::Block::RDBlock', (refbufstr => \$buff,
+						    blocksize => 
+						    $UNDO_BLOCKSIZE);
     
     my $frozen_undoHeader = $tied_hash{1};
     my ( $undoHeader ) = FreezeThaw::thaw $frozen_undoHeader;
     $cl_ctx->{undoHeader} = $undoHeader;
 
-    my $try_proc_num = 1;
+    my $try_proc_num = $starting_pid;
+
+    my $pid_param;
+    my $fhdefs = $dict->{fhdefs};
+
+    if(defined($fhdefs)){
+	$pid_param = $fhdefs->{_pid};
+    }
+
+    if(defined($pid_param)){
+	$try_proc_num = $pid_param;
+    }
 
     # determine if this proc_num is free
     while(1){
+	if($try_proc_num >= $cl_ctx->{undoHeader}->{procs}){
+	    Carp::croak(
+	        "Maximum processes ($cl_ctx->{undoHeader}->{procs}) exceeded");
+	}
+
 	my $lockname = "SVR" . $try_proc_num;
 	my $curLock = 
 	    Genezzo::Contrib::Clustered::GLock::GLock->new(
 	        lock => $lockname, block => 0);
 	if(defined($curLock->lock(shared => 0))){
-	    last;  # obtained lock
+	    last;  # Obtained lock.
 	}
 	
 	$try_proc_num++;
-
-	if($try_proc_num >= $cl_ctx->{undoHeader}->{procs}){
-	    Carp::croak("maximum processes exceeded");
-	}
     }
 
     $cl_ctx->{proc_num} = $try_proc_num;
@@ -591,44 +1013,50 @@ sub _init
     $cl_ctx->{proc_undo_blocknum} = 
         1 + $cl_ctx->{undoHeader}->{procs} + 
 	($cl_ctx->{undoHeader}->{blocks_per_proc} * $cl_ctx->{proc_num});
+
     InitConstBuff($COMMITTED_BUFF, $COMMITTED_CODE);
     InitConstBuff($ROLLEDBACK_BUFF, $ROLLEDBACK_CODE);
     InitConstBuff($PENDING_BUFF, $PENDING_CODE);
     InitConstBuff($CLEAR_BUFF, $CLEAR_CODE);
 
-    # hashed on fileno
-    # contents IO::File
+    # Hashed on fileno.
+    # Contains IO::File.
     $cl_ctx->{open_files} = {};
 
-    # hashed on $fileno_$blockno
+    # Hashed on $fileno_$blockno.
     # contents are { f => $fileno, b => $blockno } 
     $cl_ctx->{dirty_blocks} = {};
 
     my $gtxLock = Genezzo::Contrib::Clustered::GLock::GTXLock->new();
     $cl_ctx->{gtxLock} = $gtxLock;
 
-    my $tx_state = ReadTransactionState();
+    # Startup recovery.
+    my $tx_state = $self->ReadTransactionState();
 
     if(($tx_state eq $PENDING_CODE) || ($tx_state eq $ROLLEDBACK_CODE)){
-	print STDERR "rollback at startup necessary!\n";
-	Rollback_Internal();
-	# what about restarting???
-	print STDERR "PLEASE TYPE ROLLBACK COMMAND\n";
-	# print STDERR "FOLLOWED BY COMMIT COMMAND\n";
-	# note here no rollback work will occur, but system will restart
-	# from disk (I hope)
-        # currently wrong, actually lots of work is done and leaves open tx
-        # that needs committing
-	# but it is ignored since we mark 'clear' at end
+        my $affected = $self->Rollback_Internal();
+	
+	if($affected > 0) {
+	    print STDERR "rollback at startup necessary!\n";
+	    print STDERR "PLEASE TYPE ROLLBACK COMMAND\n";
+	    # note here no rollback work will occur, but system will restart
+	    # from disk (verify)
+	}
     }elsif($tx_state eq $COMMITTED_CODE){
-	# need to clear undo proc id in blocks...
+	# need to clear PID in blocks
+	$self->ApplyFuncToUndo(\&CommitFunc);
     }
 
-    $cl_ctx->{tx_id} = 0;	# TODO:  add timestamp 
+    $self->WriteTransactionState($CLEAR_BUFF);
 
-    whisper "begin init undo\n";
-    # init all undo blocks
-    CreateUndoBlock();
+    # Rollback_Internal and Commit accumulate locks.
+    $gtxLock->unlockAll();	
+
+    $cl_ctx->{tx_id} = 0; 
+
+    whisper "G:C:C:_init begin init undo\n";
+    # Init all undo blocks.
+    $self->CreateUndoBlock();
     my $tmp_undo_blockid;
 
     for($tmp_undo_blockid = 0; 
@@ -636,25 +1064,34 @@ sub _init
 	$tmp_undo_blockid++)
     {
 	$cl_ctx->{current_undo_blockid} = $tmp_undo_blockid;
-	WriteUndoBlock();
+	$self->WriteUndoBlock();
     }
 
-    whisper "end init undo\n";
+    whisper "G:C:C:_init end init undo\n";
 
-    $cl_ctx->{tx_id} = 1;	# TODO:  add timestamp 
-    WriteTransactionState($CLEAR_BUFF);
+    $cl_ctx->{tx_id} = 1; 
     $cl_ctx->{have_begin_trans} = 0;
 
     whisper "Genezzo::Contrib::Clustered::_init finished\n";
-    $init_done = 1;
+    $self->{init_done} = 1;
 }
 
+####################################################################
 sub new
 {
     whoami;
     my $invocant = shift;
     my $class = ref($invocant) || $invocant ;
-    my $self = { };
+    my $self = {};
+    $self->{MARK} = 1;
+
+    # Clustered context.
+    $self->{cl_ctx} = {};
+
+    # Flag to avoid processing write to buffer during read.
+    $self->{inReadBlock} = 0;
+
+    $self->{init_done} = 0;
 
     $self->{dict} = shift @_;
     # greet $self->{dict}->{prefs};
@@ -663,18 +1100,17 @@ sub new
 
 }
 
+####################################################################
 sub SysHookInit
 {
     goto &new
 
 }
 
+####################################################################
 BEGIN
 {
     print STDERR "Genezzo::Contrib::Clustered will be installed\n"; 
-
-    $cl_ctx = {};
-    $inReadBlock = 0;
 
     $COMMITTED_BUFF = "";
     $ROLLEDBACK_BUFF = "";
@@ -687,6 +1123,9 @@ BEGIN
     $CLEAR_CODE = "-";
 
     $UNDO_BLOCKSIZE = $Genezzo::Block::Std::DEFBLOCKSIZE;
+
+    $starting_pid = 1;
+    $pad_undo = 0;
 }
 
 1;
