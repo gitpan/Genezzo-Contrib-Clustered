@@ -99,7 +99,7 @@ TODO
        tablespace tables.  Otherwise we need to lock additional blocks
        (for system tables) already read at startup prior to syshook
        initialization.  And locking system tables prevents other
-       instances from running in parallel.
+       instances from running in parallel.  [this may not solve problems...]
 
   13)  [Genezzo update] add pre-havok command line param which specifies
        routine to run prior to opening database.
@@ -113,10 +113,18 @@ TODO
        with reads.  Also cached structures become invalid whenever block
        zero is written.
 
+  14)  [Genezzo refactoring] Move Verify and Update checksum routines
+       out of Genezzo::BufCA::BCFile::_filereadblock and _filewriteblock
+       and into Util.
+
+  15)  Modify VerifyChecksum and UpdateChecksum to use Util routines.
+
   99)  After the above, complete rest of development per Design Document:
    a)  [Done] Detect blocks needing recovery via process_id in block.
    b)  [Done] Recover dead processes
    c)  etc...
+
+  100) Recognize incomplete undo blocks and read buddy block instead.
 
 COPYRIGHT AND LICENCE
 

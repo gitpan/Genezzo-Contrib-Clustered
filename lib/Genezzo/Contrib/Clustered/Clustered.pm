@@ -18,7 +18,7 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.20';
+our $VERSION = '0.21';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
@@ -217,6 +217,7 @@ sub ClearPID
 }
 
 ####################################################################
+# Passed to ApplyFuncToUndo.
 sub CommitFunc
 {
     my ($self, $fileno, $blockno) = @_;
@@ -474,6 +475,7 @@ sub GetBlockWithPID
 }    
 
 ####################################################################
+# Passed to ApplyFuncToUndo.
 sub RollbackFunc
 {
     my ($self, $fileno, $blockno) = @_;
@@ -693,7 +695,16 @@ sub ReadTransactionState
     Genezzo::Util::gnz_read($undo_file, $buf, $UNDO_BLOCKSIZE)
 	or die "bad write - file undo block $blk: $! \n";
 
-    return substr($buf,0,1);
+    my $ch = substr($buf,0,1);
+
+    # Handle corruped byte case.
+    if(($ch ne $COMMITTED_CODE) && ($ch ne $CLEAR_CODE) &&
+       ($ch ne $ROLLEDBACK_CODE) && ($ch ne $PENDING_CODE))
+    {
+	$ch = $ROLLEDBACK_CODE;
+    }
+
+    return $ch;
 }
 
 ####################################################################

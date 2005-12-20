@@ -1,4 +1,8 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.21  Mon Dec 19 23:00:00 2005
+	Handle corrupted transaction code byte case.
+	Add another TODO.
+
 0.20  Mon Dec 19 07:00:00 2005
 	Update ClusteredGenezzoDesign.html
 	Pad transaction status block with '=' instead of '-'
