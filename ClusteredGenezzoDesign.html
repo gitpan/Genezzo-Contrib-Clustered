@@ -4,7 +4,7 @@
 </head>
 <body>
 <center><h1>Clustered Genezzo Design Document</h1></center>
-<center><h4>December 19, 2005</h4></center>
+<center><h4>December 20, 2005</h4></center>
 <center><h4>Eric Rollins</h4></center>
 <h2>Introduction</h2>
 Genezzo is a relational database written in Perl currently under development.
@@ -450,7 +450,7 @@ and aren't visible to the lock manager.  Other machines won't be
 notified of changes.  We may only support distributed transactions
 against the non-system tablespace.  The data dictionary would remain
 in the system tablespace and would be cacheable.  Currently the
-data dictionary is written when a table spills into another table of its
+data dictionary is written when a table spills into another file of its
 tablespace, so the data dictionary is not read-only for DML.
 <h2>Performance</h2>
 The current Clustered Genezzo design has many areas of concern with
