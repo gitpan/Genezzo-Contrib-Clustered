@@ -1,4 +1,13 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.23  Fri Dec 23 12:00:00 2005
+	Modify ReadBlock to replace instead of wrap _filereadblock
+	  to avoid duplicate reads.
+	Attempted moving DirtyBlock to BufCaElt::_dirty; doesn't work
+	  so left old DirtyScalar::STORE method registered.
+	sync is no longer called on non-Cygwin Win32.  autoflush(1) is
+	  called instead.  Yes, this probably gives terrible performance,
+	  but it should pass CPAN Testers :-)
+
 0.22  Tue Dec 20 11:00:00 2005
 	HTML doc fix.
 

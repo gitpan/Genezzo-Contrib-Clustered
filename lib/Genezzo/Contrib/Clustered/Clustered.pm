@@ -18,7 +18,7 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
@@ -78,7 +78,7 @@ sub _init_filewriteblock
 }
 
 ####################################################################
-# Wraps Genezzo::BufCa::BCFile::_filereadblock.
+# Replaces Genezzo::BufCa::BCFile::_filereadblock.
 sub ReadBlock
 {
     my $self = shift;
@@ -123,11 +123,17 @@ sub ReadBlock
 	    $self->ReadOrWriteBlock($fnum, $bnum, "WRITE", $refbuf);
 	}else{
 	    # ROLLEDBACK_CODE || PENDING_CODE
-	    $self->CopyBlockToOrFromTail($fnum,$bnum,"FROM");
+	    $refbuf = $self->CopyBlockToOrFromTail($fnum,$bnum,"FROM");
 	}
     }
 
-    my $ret = &$ReadBlock_Hook(@_);
+    my $ret = 1;
+    # $ret = &$ReadBlock_Hook(@_);
+    # For now we don't read (above) directly into $refbuf_in, as
+    # I'm not sure if buf can be tied to RDBlock multiple times 
+    # (in GetBlockWithPID).
+    $$refbuf_in = $$refbuf;
+
     $self->{inReadBlock} = 0;
 
     return $ret;
@@ -196,6 +202,76 @@ sub DirtyBlock
     }
 
     return &$DirtyBlock_Hook(@_);
+}
+
+####################################################################
+# DOES NOT WORK; NOT CURRENTLY USED
+# Called by BufCa::BufCaElt::_dirty
+sub BufCaElt_DirtyBlock
+{
+    my $self = shift;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $cl_ctx = $self->{cl_ctx};
+
+    my $h;
+    my $dirty;
+    my $bce = shift;
+
+    if($bce){
+        $h = $bce->GetInfo();
+
+	# Can't rely on dirty to make decisions, since it is cleared 
+	# whenever block is written out of buffer cache
+	# (on cache full, sync, etc.).
+	$dirty = $bce->{dirty};
+
+	if(!$dirty){
+	    return;
+	}
+    }
+
+    if(!defined($self->{init_done}) || !$self->{init_done}){
+        $self->_init();
+    }
+ 
+    if(!$self->{inReadBlock} &&
+       defined($h) && 
+        ((!(defined($h->{filenum}))) || (!(defined($h->{blocknum})))))
+    {
+	# One cause is in-memory index initialization.
+	# Dict::_loadDictMemStructs=>Index::btHash::STORE...
+        #whisper 
+	#    "G:C:C::DirtyBlock bad undefined ($self->{inReadBlock})\n";
+	#cluck "bad undefined";
+    }
+
+    if(!$self->{inReadBlock} &&
+       defined($h) && 
+       defined($h->{filenum}) && defined($h->{blocknum}))
+    {
+        whisper "Genezzo::Contrib::Clustered::DirtyBlock(filenum => $h->{filenum}, blocknum => $h->{blocknum}, dirty => $dirty)\n";
+	#print STDERR "Genezzo::Contrib::Clustered::DirtyBlock(filenum => $h->{filenum}, blocknum => $h->{blocknum}, dirty => $dirty)\n";
+
+	my $blockKey = $h->{filenum} . "_" . $h->{blocknum};
+
+        if(!defined($cl_ctx->{dirty_blocks}->{$blockKey})){
+	    if(!($cl_ctx->{have_begin_trans})){
+		$self->BeginTransaction();
+		$cl_ctx->{have_begin_trans} = 1;
+	    }
+
+            whisper "adding blockKey $blockKey\n";
+	    $cl_ctx->{dirty_blocks}->{$blockKey} = { f => $h->{filenum},
+                                                     b => $h->{blocknum}};
+
+            my $gtxLock = $cl_ctx->{gtxLock};
+	    # add in fnum later...
+	    $gtxLock->lock(lock => $h->{blocknum}, shared => 0);
+
+	    $self->CopyBlockToOrFromTail($h->{filenum}, $h->{blocknum}, "TO");
+	    $self->AddAndWriteUndo($h->{filenum}, $h->{blocknum});
+        }
+    }
 }
 
 ####################################################################
@@ -521,10 +597,41 @@ sub Rollback_Internal
 }
 
 ####################################################################
+sub Sync
+{
+    my ($self, $fh) = @_;
+
+    if($Genezzo::Util::USE_FSYNC){
+	$fh->sync;
+    }else{
+	# Otherwise assume autoflush(1) has been called.
+    }
+}
+
+####################################################################
+# returns IO::File
+sub OpenFile
+{
+    my ($self, $full_filename) = @_;
+
+    my $fh = new IO::File "+<$full_filename"
+	or die "open $full_filename failed: $!\n";
+
+    if(!$Genezzo::Util::USE_FSYNC){
+	# Yes, this is probably terrible perfomance.  
+	# For now just want to pass CPAN Testers on non-Cygwin Win32.
+	$fh->autoflush(1);
+    }
+
+    return $fh;
+}
+
+####################################################################
 # Copies before image of block to end of file.
 # direction TO:    copy from body to tail
 #           FROM:  copy from tail to body
 # Optionally call xform_func with block contents before write (unused).
+# returns $refbuf.
 sub CopyBlockToOrFromTail
 {
     my ($self, $fileno, $blockno, $direction, $xform_func) = @_;
@@ -539,10 +646,7 @@ sub CopyBlockToOrFromTail
 
     if(!defined($fh)){
         whisper "G:C:C:CopyBlockToOrFromTail opening $fileno\n";
-
-        $fh = new IO::File "+<$full_filename"
-            or die "open $full_filename failed: $!\n";
-
+        $fh = $self->OpenFile($full_filename);
 	$cl_ctx->{open_files}->{$fileno} = $fh;
     }
 
@@ -590,8 +694,10 @@ sub CopyBlockToOrFromTail
 	"bad write - file $full_filename : dst $dst_offset : $! \n";
 
     #if($direction eq "TO"){
-        $fh->sync;
+        $self->Sync($fh);
     #}
+
+    return \$buf;
 }
 
 ####################################################################
@@ -613,10 +719,7 @@ sub ReadOrWriteBlock
 
     if(!defined($fh)){
         whisper "G:C:C:ReadOrWriteBlock opening $fileno\n";
-
-        $fh = new IO::File "+<$full_filename"
-            or die "open $full_filename failed: $!\n";
-
+        $fh = $self->OpenFile($full_filename);
 	$cl_ctx->{open_files}->{$fileno} = $fh;
     }
 
@@ -653,7 +756,7 @@ sub ReadOrWriteBlock
 	    or die 
 	    "bad write - file $full_filename : $offset : $! \n";
   
-	$fh->sync;
+	$self->Sync($fh);
     }else{
         die "invalid direction $direction in ReadOrWriteBlock";
     }
@@ -671,7 +774,7 @@ sub WriteTransactionState
 	or die "bad seek - file undo block $blk: $! \n";
     Genezzo::Util::gnz_write($undo_file, $state_buff, $UNDO_BLOCKSIZE)
 	or die "bad write - file undo block $blk: $! \n";
-    $undo_file->sync;
+    $self->Sync($undo_file);
 }
 
 ####################################################################
@@ -849,7 +952,7 @@ sub WriteUndoBlock
     Genezzo::Util::gnz_write($undo_file, $$bp, $UNDO_BLOCKSIZE)
         == $UNDO_BLOCKSIZE
         or die "bad write (2) of undo to undo : $! \n";
-    $undo_file->sync;
+    $self->Sync($undo_file);
 }
 
 ####################################################################
@@ -965,8 +1068,7 @@ sub _init
         File::Spec->rel2abs(
             File::Spec->catfile($fhts, $undo_filename));
 
-    $self->{undo_file} = new IO::File "+<$full_filename"
-        or die "sysopen $full_filename failed: $!\n";
+    $self->{undo_file} = $self->OpenFile($full_filename);
 
     # Construct an empty byte buffer.
     my $buff;
@@ -1232,7 +1334,7 @@ of 0 (or unset).
 
 =item ReadBlock
 
-Wraps Genezzo::BufCa::BCFile::_filereadblock
+Replaces Genezzo::BufCa::BCFile::_filereadblock
 
 =item DirtyBlock
 
