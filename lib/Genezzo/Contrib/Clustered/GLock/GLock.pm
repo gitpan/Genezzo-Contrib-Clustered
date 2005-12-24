@@ -11,6 +11,8 @@ use Carp;
 use strict;
 use warnings;
 
+use Genezzo::Util;
+
 our $LOCKER = 1;    # IPC::Locker
 our $DLM =    2;    # opendlm
 our $NONE =   3;    # no locking (still error check)
@@ -62,10 +64,11 @@ sub lock{
     croak "GLock::lock():  lock $self->{lock} already locked in mode $self->{shared}";
   }
 
-  $self->{shared} = $shared;
+  whisper "GLock::lock($self->{lock} shared=$shared block=$self->{block})\n";
 
   if($IMPL == $LOCKER){
     my $l = $self->{impl}; 
+    $self->{shared} = $shared;
     return $l->lock();
   }elsif($IMPL == $DLM){
     my $l = Genezzo::Contrib::Clustered::GLock::GLockDLM::dlm_lock(
@@ -76,8 +79,10 @@ sub lock{
     }
 
     $self->{impl} = $l;
+    $self->{shared} = $shared;
     return $l;
   }else{
+    $self->{shared} = $shared;
     return 1;
   }
 
@@ -90,6 +95,8 @@ sub unlock {
   if(!defined($self->{shared})){
     croak "GLock::unlock():  lock $self->{lock} not locked";
   }
+
+  whisper "GLock::unlock($self->{lock})\n";
 
   $self->{shared} = undef;
 
@@ -115,10 +122,11 @@ sub promote {
     croak "GLock::promote():  lock $self->{lock} not locked in shared mode";
   }
 
-  $self->{"shared"} = 0;
+  whisper "GLock::promote($self->{lock} block=$self->{block})\n";
 
   if($IMPL == $LOCKER){
     my $l = $self->{impl};
+    $self->{"shared"} = 0;
     # nothing to do
     return $l;
   }elsif ($IMPL == $DLM){
@@ -128,8 +136,44 @@ sub promote {
       $l = undef;
     }
 
+    $self->{"shared"} = 0;
     return $l;
   }else{
+    $self->{"shared"} = 0;
+    return 1;
+  }
+
+  return undef;
+}
+
+# demote exclusive to shared
+# returns undef for failure
+sub demote {
+  my $self = shift;
+  my $tmp = { @_,};
+
+  if(!defined($self->{shared}) || ($self->{shared} != 0)){
+    croak "GLock::demote():  lock $self->{lock} not locked in exclusive mode";
+  }
+
+  whisper "GLock::demote($self->{lock} block=$self->{block})\n";
+
+  if($IMPL == $LOCKER){
+    my $l = $self->{impl};
+    # nothing to do
+    $self->{"shared"} = 1;
+    return $l;
+  }elsif ($IMPL == $DLM){
+    my $l = Genezzo::Contrib::Clustered::GLock::GLockDLM::dlm_demote(
+        $self->{lock},$self->{impl},$self->{block});
+    if($l == 0){ 
+      $l = undef;
+    }
+
+    $self->{"shared"} = 1;
+    return $l;
+  }else{
+    $self->{"shared"} = 1;
     return 1;
   }
 
@@ -139,6 +183,16 @@ sub promote {
 sub isShared {
   my $self = shift;
   return $self->{shared};
+}
+
+sub ast_poll {
+  if($IMPL == $LOCKER){
+    return 0;
+  }elsif ($IMPL == $DLM){
+    return Genezzo::Contrib::Clustered::GLock::GLockDLM::dlm_ast_poll();
+  }else{
+    return 0;
+  }
 }
 
 1;
@@ -178,11 +232,19 @@ Returns undef for failure.
 
 Promotes lock from Shared to Exclusive.  Returns undef for failure.
 
+=item demote
+
+Demotes lock from Exclusive to Shared.  Returns undef for failure.
+
 =item unlock
 
 Unlocks lock. 
 
 =back
+
+=item ast_poll
+
+Returns 1 if recent asyncronous request for lock held by process.  0 otherwise.
 
 =head1 LIMITATIONS
 

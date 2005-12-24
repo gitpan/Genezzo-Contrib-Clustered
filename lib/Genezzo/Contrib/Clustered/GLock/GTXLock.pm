@@ -77,7 +77,7 @@ sub unlockAll{
   my $self = shift;
   my $locks = $self->{locks};
 
-  whisper "Genezzo::Contrib::Clustered::GLock::unlockAll()";
+  whisper "Genezzo::Contrib::Clustered::GTXLock::unlockAll()";
 
   my $key;
   my $value;
@@ -87,6 +87,24 @@ sub unlockAll{
   }
 
   $self->{locks} = {};
+
+  return 1;
+}
+
+sub demoteAll{
+  my $self = shift;
+  my $locks = $self->{locks};
+
+  whisper "Genezzo::Contrib::Clustered::GTXLock::demoteAll()";
+
+  my $key;
+  my $value;
+
+  while(($key,$value) = each(%$locks)){
+    if(!$value->isShared()){
+      $value->demote() or croak "GTXLock::demoteAll() failed demote($key)";
+    }
+  }
 
   return 1;
 }
@@ -123,9 +141,13 @@ Locks lock with name NAME.  Shared if SHARED=1, otherwise Exclusive (default).
 Uses a blocking lock call.  If lock is currently held Shared promotes to 
 Exclusive.  Adds lock to hash of all locks held by object.
 
-=item unlockall
+=item unlockAll
 
 Unlocks all locks held by object.
+
+=item demoteAll
+
+Demotes all locks held by object to shared mode.
 
 =back
 

@@ -1,4 +1,17 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.24  Sat Dec 24 01:00:00 2005
+	Modified DLM code to raise DEADLOCK error on deadlock.
+	Added experimental Kngz_Execute hook to catch DEADLOCK.
+	Modified DLM code to support demoteAll (to SH) besides unlockAll.
+	Commit now uses demoteAll insead of unlockAll, to match current
+	  buffer cache behavior.
+	Added DLM function ast_poll to determine whether there are any
+	  recent requests for locks held by that process.
+	Added new client genloopclient.pl to test locking interactions between 
+	  clients. 
+	Now recommend rollback as first action in gendba or scripts,
+	  so all blocks will be locked.
+
 0.23  Fri Dec 23 12:00:00 2005
 	Modify ReadBlock to replace instead of wrap _filereadblock
 	  to avoid duplicate reads.

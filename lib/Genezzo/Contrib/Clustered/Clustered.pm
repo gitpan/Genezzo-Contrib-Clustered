@@ -18,12 +18,13 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.23';
+our $VERSION = '0.24';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
 our $Commit_Hook;
 our $Rollback_Hook;
+our $Execute_Hook;
 
 # Constant blocks. 
 our $COMMITTED_BUFF;
@@ -331,6 +332,31 @@ sub CommitFunc
 }
 
 ####################################################################
+# Wraps Genezzo::GenDBI::Kgnz_Execute.
+# Experimental; trying out catching deadlock error.
+sub Execute
+{
+    my $self = shift;
+    if(!defined($self->{MARK})){cluck("missing MARK");}
+    my $ret;
+
+    eval {
+	$ret = &$Execute_Hook(@_);
+    };
+
+    if($@){
+	if($@ =~ /DEADLOCK/){
+	    print STDERR "ERROR:  Deadlock has occurred. Recommend ROLLBACK\n";
+	    return $ret;
+	}else{
+	    die $@;
+	}
+    }
+
+    return $ret;
+}
+
+####################################################################
 # Wraps Genezzo::GenDBI::Kgnz_Commit.
 sub Commit
 {
@@ -360,7 +386,10 @@ sub Commit
     # TODO: Release all blocks in buffer cache (how?).
 
     my $gtxLock = $self->{cl_ctx}->{gtxLock};
-    $gtxLock->unlockAll();
+    # Current buffer cache doesn't release blocks on commit, so
+    # demote instead of release all locks.
+    # $gtxLock->unlockAll();
+    $gtxLock->demoteAll();
     $cl_ctx->{dirty_blocks} = {};
 
     $self->ResetUndo();
@@ -1163,7 +1192,9 @@ sub _init
     $self->WriteTransactionState($CLEAR_BUFF);
 
     # Rollback_Internal and Commit accumulate locks.
-    $gtxLock->unlockAll();	
+    # Keep them.
+    # $gtxLock->unlockAll();	
+    $gtxLock->demoteAll();
 
     $cl_ctx->{tx_id} = 0; 
 
@@ -1223,7 +1254,9 @@ sub SysHookInit
 ####################################################################
 BEGIN
 {
-    print STDERR "Genezzo::Contrib::Clustered will be installed\n"; 
+    # Rollback at start will obtain shared locks for all blocks in buffer
+    # cache.
+    print STDERR "Genezzo::Contrib::Clustered will be installed (please type rollback)\n"; 
 
     $COMMITTED_BUFF = "";
     $ROLLEDBACK_BUFF = "";
@@ -1351,6 +1384,10 @@ Wraps Genezzo::GenDBI::Kgnz_Commit
 =item Rollback
 
 Wraps Genezzo::GenDBI::Kgnz_Rollback
+
+=item Execute
+
+Wraps Genezzo::GenDBI::Kgnz_Execute (experimental!)
 
 =back
 

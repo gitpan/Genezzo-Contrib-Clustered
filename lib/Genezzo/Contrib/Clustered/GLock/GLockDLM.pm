@@ -23,7 +23,13 @@ sub dlm_lock()
 {
     my ($name, $shared, $blocking) = @_;
 
-    return dlm_lock_impl($name, $shared, $blocking);
+    my $ret = return dlm_lock_impl($name, $shared, $blocking);
+
+    if($ret == -1){
+      die "DEADLOCK";
+    }
+
+    return $ret;
 }
 
 sub dlm_unlock()
@@ -37,7 +43,31 @@ sub dlm_promote()
 {
     my ($name, $lockid, $blocking) = @_;
 
-    return dlm_promote_impl($name, $lockid, $blocking);
+    my $ret = dlm_promote_impl($name, $lockid, $blocking);
+
+    if($ret == -1){
+      die "DEADLOCK";
+    }
+
+    return $ret;
+}
+
+sub dlm_demote()
+{
+    my ($name, $lockid, $blocking) = @_;
+
+    my $ret = dlm_demote_impl($name, $lockid, $blocking);
+
+    if($ret == -1){
+      die "DEADLOCK";
+    }
+
+    return $ret;
+}
+
+sub dlm_ast_poll()
+{
+    return dlm_ast_poll_impl();
 }
 
 BEGIN
@@ -78,9 +108,18 @@ Returns lockid,or 0 for failure.
 Promotes lock with name NAME and lockid LOCKID to exclusive mode.
 Returns 1 for success, or 0 for failure. 
 
+=item dlm_demote NAME, LOCKID, BLOCKING
+
+Demotes lock with name NAME and lockid LOCKID to shared mode.
+Returns 1 for success, or 0 for failure. 
+
 =item dlm_unlock LOCKID
 
 Releases lock with lockid LOCKID.  Returns 1 for success, 0 for failure.
+
+=item dlm_ast_poll
+
+Returns 1 if recent asyncronous request for lock held by process.  0 otherwise.
 
 =back
 
@@ -128,8 +167,42 @@ __C__
 
 //
 #include <opendlm/dlm.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-// returns lockid, or 0 for failure
+static int ast_request = 0;
+
+static void bast_func(void *astargs, int mode){
+  char *ch_args = (char*)astargs;
+
+  if(!ch_args) ch_args = "unknown";
+
+  fprintf(stderr,"\nDLM:  blocked lock request for lock (%s) in mode: ",
+    ch_args);
+
+  if(mode == LKM_EXMODE){
+    fprintf(stderr,"LKM_EXMODE\n");
+  }else if(mode == LKM_PRMODE){
+    fprintf(stderr,"LKM_PRMODE\n");
+  }else{
+    fprintf(stderr,"%d\n",mode);
+  }
+
+  ast_request = 1;  
+}
+
+// Leak lockname on every request!
+//#define LEAK 1
+
+static void *ast_arg(char *lockname){
+#ifdef LEAK
+    return (void*)strdup(lockname);
+#else
+    return (void*)0;
+#endif
+}
+
+// returns lockid, 0 for failure, -1 for deadlock
 int dlm_lock_impl(char *name, int shared, int block){
   dlm_stats_t status;
   struct lockstatus lksb;
@@ -147,11 +220,19 @@ int dlm_lock_impl(char *name, int shared, int block){
 			flags,
 			name,
 			strlen(name),
-			0,0);
+			ast_arg(name),
+			bast_func);
 
   if(status != DLM_NORMAL) {
-    dlm_perror("dlmlock_sync");
-    return 0;
+    if(block || (status != DLM_NOTQUEUED)){
+      dlm_perror("dlmlock_sync");
+    }
+
+    if(status == DLM_DEADLOCK){
+      return -1;
+    }else{
+      return 0;
+    }
   }
 
   if((!block) && (lksb.status == DLM_NOTQUEUED)){
@@ -200,11 +281,17 @@ int dlm_promote_impl(char *name, int lockid, int block){
 			flags,
 			name,
 			strlen(name),
-			0,0);
+			ast_arg(name),
+			bast_func);
 
   if(status != DLM_NORMAL) {
     dlm_perror("dlmlock_sync(3)");
-    return 0;
+
+    if(status == DLM_DEADLOCK){
+      return -1;
+    }else{
+      return 0;
+    }
   }
 
   if((!block) && (lksb.status == DLM_NOTQUEUED)){
@@ -219,3 +306,51 @@ int dlm_promote_impl(char *name, int lockid, int block){
   return 1;
 }
 
+// returns 1 for success, or 0 for failure
+int dlm_demote_impl(char *name, int lockid, int block){
+  dlm_stats_t status;
+  struct lockstatus lksb;
+  lksb.timeout = 0;
+  lksb.lockid = lockid;
+  int mode = LKM_PRMODE;
+  int flags = LKM_CONVERT;
+
+  if(!block) flags |= LKM_NOQUEUE;
+
+  status = dlmlock_sync(mode,
+			&lksb,
+			flags,
+			name,
+			strlen(name),
+			ast_arg(name),
+			bast_func);
+
+  if(status != DLM_NORMAL) {
+    dlm_perror("dlmlock_sync(5)");
+
+    if(status == DLM_DEADLOCK){
+      return -1;
+    }else{
+      return 0;
+    }
+  }
+
+  if((!block) && (lksb.status == DLM_NOTQUEUED)){
+    return 0;
+  } 
+
+  if(lksb.status != DLM_NORMAL){
+    dlm_perror("dlmlock_sync(6)");
+    return 0;
+  }
+
+  return 1;
+}
+
+// Returns 1 for recent ast request, 0 for none.
+int dlm_ast_poll_impl(){
+  ASTpoll(getpid(), 0);
+  int ret_ast_request = ast_request;
+  ast_request = 0;
+  return ret_ast_request;
+}
