@@ -18,7 +18,7 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.24';
+our $VERSION = '0.25';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
@@ -346,8 +346,8 @@ sub Execute
 
     if($@){
 	if($@ =~ /DEADLOCK/){
-	    print STDERR "ERROR:  Deadlock has occurred. Recommend ROLLBACK\n";
-	    return $ret;
+	    print STDERR "ERROR:  Deadlock has occurred. Exiting...\n";
+	    CORE::exit();
 	}else{
 	    die $@;
 	}
@@ -441,6 +441,7 @@ sub Rollback
     # They also include block zero (directory & space management), etc.
     # TODO:  We can't free the locks, as the blocks would be unprotected.
     #$gtxLock->unlockAll();
+    $gtxLock->demoteAll();
 
     return $ret;
 }
@@ -1399,9 +1400,6 @@ none
 
 This is pre-alpha software; don't use it to store any data you hope
 to see again!
-
-Transactions, Rollback, etc. are not fully implemented.  Process death
-and necessary cleanup is not detected.
 
 See README for current TODO list.
 

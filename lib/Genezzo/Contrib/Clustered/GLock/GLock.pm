@@ -195,6 +195,16 @@ sub ast_poll {
   }
 }
 
+sub set_notify {
+  if($IMPL == $LOCKER){
+    return 0;
+  }elsif ($IMPL == $DLM){
+    return Genezzo::Contrib::Clustered::GLock::GLockDLM::dlm_set_notify();
+  }else{
+    return 0;
+  }
+}
+
 1;
 
 __DATA__

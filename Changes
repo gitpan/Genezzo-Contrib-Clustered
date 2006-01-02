@@ -1,4 +1,12 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.25  Sun Jan 01 17:00:00 2006
+	Added ModPerlWrap.pm and sample genezzo_form.pl to use Apache
+	  web server as multi-user XML over HTTP interface to 
+	  Clustered Genezzo.
+	Added support for asyncronous notification of blocking lock
+	  requests.  See ModPerlWrap or modified genloopclient.pl for
+	  examples.
+
 0.24  Sat Dec 24 01:00:00 2005
 	Modified DLM code to raise DEADLOCK error on deadlock.
 	Added experimental Kngz_Execute hook to catch DEADLOCK.

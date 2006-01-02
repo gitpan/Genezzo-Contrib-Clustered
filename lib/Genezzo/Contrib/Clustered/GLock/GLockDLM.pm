@@ -11,7 +11,10 @@ use warnings;
 package Genezzo::Contrib::Clustered::GLock::GLockDLM;
 
 # Locking for Genezzo using OpenDLM 
-use Inline (C => 'DATA', LIBS => '-ldlm');
+use Inline (C => 'DATA',
+	    DIRECTORY => '/Inline',  # Apache needs a writeable directory
+	    LIBS => '-ldlm');
+
 require Exporter;
 
 Inline->init;  # help for "require GLockDLM"
@@ -70,9 +73,14 @@ sub dlm_ast_poll()
     return dlm_ast_poll_impl();
 }
 
+sub dlm_set_notify()
+{
+    return dlm_set_notify_impl();
+}
+
 BEGIN
 {
-    print "Genezzo::Contrib::Clustered::GLock::GLockDLM installed\n";
+    print STDERR "Genezzo::Contrib::Clustered::GLock::GLockDLM installed\n";
 }
 
 1;
@@ -177,18 +185,21 @@ static void bast_func(void *astargs, int mode){
 
   if(!ch_args) ch_args = "unknown";
 
+/*
   fprintf(stderr,"\nDLM:  blocked lock request for lock (%s) in mode: ",
     ch_args);
 
   if(mode == LKM_EXMODE){
-    fprintf(stderr,"LKM_EXMODE\n");
+    fprintf(stderr,"EX\n");
   }else if(mode == LKM_PRMODE){
-    fprintf(stderr,"LKM_PRMODE\n");
+    fprintf(stderr,"PR\n");
   }else{
     fprintf(stderr,"%d\n",mode);
   }
-
-  ast_request = 1;  
+*/
+  if(mode == LKM_EXMODE){  // Ignore PR (SHARED) requests, since we drop
+    ast_request = 1;       // to SHARED mode after commit anyway.
+  }
 }
 
 // Leak lockname on every request!
@@ -354,3 +365,24 @@ int dlm_ast_poll_impl(){
   ast_request = 0;
   return ret_ast_request;
 }
+
+static void sig_func(){
+    fprintf(stderr,"\nSIGNAL RECD\n\n");
+}
+
+int dlm_set_notify_impl(){
+  if(dlm_setnotify(SIGUSR2,0) != DLM_NORMAL){
+    dlm_perror("dlm_setnotify");
+  }
+
+/*
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGUSR2);
+  sigprocmask(SIG_UNBLOCK, &mask, 0);
+  signal(SIGUSR2, sig_func);
+*/
+
+  return 0;
+}
+

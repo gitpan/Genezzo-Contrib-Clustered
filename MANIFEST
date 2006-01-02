@@ -14,10 +14,12 @@ t/Genezzo-Contrib-Clustered5b.t
 t/Genezzo-Contrib-Clustered5c.t
 t/Genezzo-Contrib-Clustered6.t
 lib/Genezzo/Contrib/Clustered/Clustered.pm
+lib/Genezzo/Contrib/Clustered/ModPerlWrap.pm
 lib/Genezzo/Contrib/Clustered/PrepUndo.pm
 lib/Genezzo/Contrib/Clustered/clustered.sql
 lib/Genezzo/Contrib/Clustered/genprepundo.pl
 lib/Genezzo/Contrib/Clustered/genloopclient.pl
+lib/Genezzo/Contrib/Clustered/genezzo_form.pl
 lib/Genezzo/Contrib/Clustered/GLock/GLock.pm
 lib/Genezzo/Contrib/Clustered/GLock/GLockDLM.pm
 lib/Genezzo/Contrib/Clustered/GLock/GTXLock.pm
