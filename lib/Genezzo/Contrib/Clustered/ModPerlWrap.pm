@@ -156,6 +156,9 @@ sub PrintForm {
 }
 
 sub StartPage {
+    $processing = 1;
+    $need_restart = 0;
+
     print "Content-type: text/xml\n\n";
     print '<?xml version="1.0" encoding="iso-8859-1"?>';
     print "\n";

@@ -1,4 +1,8 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.27  Tue Jan 03 09:00:00 2006
+	Modify ModPerlWrap to reset $processing and $restart on each
+	  PageStart()
+
 0.26  Mon Jan 02 23:00:00 2006
 	Modified VerifyChecksum and UpdateChecksum to use new
 	  Genezzo::Block::Util routines.
