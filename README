@@ -106,18 +106,16 @@ TODO
 
   14)  Use pre-havok (above) to perform recovery prior to opening database.
        Havok/syshook routines won't run if database cannot be opened due
-       to corruption.
+       to corruption.  Also unlocked startup reads create race conditions.
 
   13)  [Genezzo redesign] Storing table directory and free space list in
        block zero of each tablespace prevents any concurrency of writes
        with reads.  Also cached structures become invalid whenever block
        zero is written.
 
-  14)  [Genezzo refactoring] Move Verify and Update checksum routines
-       out of Genezzo::BufCA::BCFile::_filereadblock and _filewriteblock
-       and into Util.
+  14)  [Genezzo refactoring done] 
 
-  15)  Modify VerifyChecksum and UpdateChecksum to use Util routines.
+  15)  Done.
 
   99)  After the above, complete rest of development per Design Document:
    a)  [Done] Detect blocks needing recovery via process_id in block.

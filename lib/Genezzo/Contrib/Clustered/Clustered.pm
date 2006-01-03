@@ -9,6 +9,7 @@ package Genezzo::Contrib::Clustered::Clustered;
 use strict;
 use warnings;
 use Genezzo::Util;
+use Genezzo::Block::Util;
 use Genezzo::Contrib::Clustered::GLock::GTXLock;
 use Genezzo::Contrib::Clustered::GLock::GLock;
 use Data::Dumper;
@@ -18,7 +19,7 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.25';
+our $VERSION = '0.26';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
@@ -986,68 +987,30 @@ sub WriteUndoBlock
 }
 
 ####################################################################
-# TODO: Modify when Genezzo::BufCA::BCFile::_filereadblock is refactored.
 # Returns 1 for success, 0 for failure.
 sub VerifyChecksum
 {
     my ($self, $refbuf, $blocksize) = @_;
     if(!defined($self->{MARK})){cluck("missing MARK");}
     
-    # XXX XXX: compute a basic 32 bit checksum
-#   my $basicftr = pack($Genezzo::Block::Std::FtrTemplate, 0, 0, 0);
-    my $packlen  = $Genezzo::Block::Std::LenFtrTemplate;
-
-    my $skippy = $blocksize-$packlen; # skip to end of buffer
-    # get the checksum
-    my @outarr = unpack("x$skippy $Genezzo::Block::Std::FtrTemplate", 
-			$$refbuf);
-
-    # zero out the checksum because it wasn't part of the original
-    # calculation
-#   substr($$refbuf, $blocksize-$packlen, $packlen) = $basicftr;
-
-    # calculate checksum and test if matches stored value
-    my $ckTempl  = '%32C' . ($blocksize - $packlen); # skip the footer
-    my $cksum = unpack($ckTempl, $$refbuf) % 65535;
-    my $ck1 = pop @outarr;
-
-    if ($cksum == $ck1)
+    my @cksums = Genezzo::Block::Util::GetChecksums($refbuf, $blocksize);
+    # test if the calculated checksum matches the stored checksum
+    unless ((scalar(@cksums) == 2) &&
+	    ($cksums[0] == $cksums[1]))
     {
-	return 1;
-    }else{
 	return 0;
     }
+
+    return 1;
 }
 
 ####################################################################
-# TODO: Modify when Genezzo::BufCA::BCFile::_filewriteblock is refactored.
 sub UpdateChecksum
 {
     my ($self, $fnum, $bnum, $refbuf, $blocksize) = @_;
     if(!defined($self->{MARK})){cluck("missing MARK");}
 
-    # XXX: build a basic header with the file number, block number,
-    # etc 
-    # XXX XXX fileblockTmpl
-    my $basichdr = pack($Genezzo::Block::Std::fileblockTmpl, $fnum, $bnum); 
-    my $packlen  = $Genezzo::Block::Std::fbtLen;
-
-    substr($$refbuf, 0, $packlen) = $basichdr;
-
-    # XXX XXX: compute a basic 32 bit checksum 
-    # -- see perldoc unpack
-#   my $basicftr = pack($Genezzo::Block::Std::FtrTemplate, 0, 0, 0);
-    $packlen     = $Genezzo::Block::Std::LenFtrTemplate;
-
-    # zero out the checksum because the old checksum isn't part of
-    # the new checksum
-#   substr($$refbuf, $blocksize-$packlen, $packlen) = $basicftr;
-
-    my $ckTempl  = '%32C' . ($blocksize - $packlen); # skip the footer
-    my $cksum    = unpack($ckTempl, $$refbuf) % 65535;
-    my $basicftr = pack($Genezzo::Block::Std::FtrTemplate, 0, 0, $cksum);
-    # add the checksum to the end of the block
-    substr($$refbuf, $blocksize-$packlen, $packlen) = $basicftr;
+    Genezzo::Block::Util::UpdateBlockFooter($refbuf, $blocksize);
 }
 
 ####################################################################

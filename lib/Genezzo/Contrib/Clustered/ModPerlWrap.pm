@@ -247,7 +247,7 @@ Genezzo::Contrib::Clustered::ModPerlWrap - Mod Perl wrappers for Genezzo
 =head1 SYNOPSIS
     
     StartPage();
-    Connect("/unsafe");
+    Connect("/dev/raw");
     ProcessStmt("insert into t1 values (10, 'test10')");
     ProcessStmt("insert into t1 values (11, 'test11')");
     Commit();
@@ -256,7 +256,7 @@ Genezzo::Contrib::Clustered::ModPerlWrap - Mod Perl wrappers for Genezzo
 or
 
     StartPage();
-    Connect("/unsafe");
+    Connect("/dev/raw");
     ProcessStmt("select * from t1");
     FinishPage();
 
@@ -269,6 +269,8 @@ parameters are used like stored procedure parameters, and the
 processing on the page forms the transaction boundary.
 
 Note control flow on page does not continue after errors or FinishPage().
+
+See genezzo_form.pl for examples.
 
 =head1 FUNCTIONS
 

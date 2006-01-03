@@ -1,4 +1,8 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.26  Mon Jan 02 23:00:00 2006
+	Modified VerifyChecksum and UpdateChecksum to use new
+	  Genezzo::Block::Util routines.
+
 0.25  Sun Jan 01 17:00:00 2006
 	Added ModPerlWrap.pm and sample genezzo_form.pl to use Apache
 	  web server as multi-user XML over HTTP interface to 
