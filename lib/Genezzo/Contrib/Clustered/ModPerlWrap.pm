@@ -23,12 +23,11 @@ our @EXPORT = qw(PrintForm StartPage ProcessStmt Rollback Commit
 		 Connect FinishPage);
 
 our $dbh;
-our $query_num;
+our $query_num = 0;
 our $dbi_gzerr;
 
-our $processing = 1;
+our $processing = 0;
 our $need_restart = 0;
-
 
 sub restart_exit {
     print STDERR "\nExiting on restart_exit\n";
@@ -104,6 +103,19 @@ sub sig_handler {
 }
 
 BEGIN {
+}
+
+sub Connect {
+    my ($gnz_home) = @_;
+
+    # also covered in StartPage()
+    $processing = 1;
+    $need_restart = 0;
+
+    if(defined($dbh)){
+	return;  # already connected
+    }
+
     # Perl "safe" signals prevent signals from being recd during Apache 
     # event loop.
     #$SIG{USR2} = \&sig_handler;
@@ -112,16 +124,8 @@ BEGIN {
 		     or die "Error setting SIGUSR2 handler: $!\n";
 
     Genezzo::Contrib::Clustered::GLock::GLock::set_notify();
-}
 
-sub Connect {
-    my ($gnz_home) = @_;
-
-    if(defined($dbh)){
-	return;  # already connected
-    }
-
-    $query_num = 0;
+    $query_num = 1;  # already incr from zero in StartPage()
 
     $dbh = Genezzo::GenDBI->connect($gnz_home, 
 				    "NOUSER", 
@@ -143,6 +147,7 @@ sub Connect {
 
 use CGI qw(:standard escapeHTML);
 
+# This routine is not protected against interruption.
 sub PrintForm {
     print header();
     print start_html("Genezzo");
@@ -163,8 +168,9 @@ sub StartPage {
     print '<?xml version="1.0" encoding="iso-8859-1"?>';
     print "\n";
     print "<results>\n"; 
-    $query_num++;
     print "<query_num>$query_num</query_num>\n";   # to debug mod_perl reuse
+    print "<os_pid>$$</os_pid>\n";
+    $query_num++;
 }
 
 # For queries prints results as XML.
@@ -274,6 +280,10 @@ processing on the page forms the transaction boundary.
 Note control flow on page does not continue after errors or FinishPage().
 
 See genezzo_form.pl for examples.
+
+May use "PerlModule ModPerlWrap" in apache2.conf.  This preloads this
+module and the rest of the Genezzo modules so they are (initially)
+shared between all apache processes, saving memory.  
 
 =head1 FUNCTIONS
 

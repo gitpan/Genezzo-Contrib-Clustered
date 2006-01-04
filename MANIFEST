@@ -13,6 +13,7 @@ t/Genezzo-Contrib-Clustered5a.t
 t/Genezzo-Contrib-Clustered5b.t
 t/Genezzo-Contrib-Clustered5c.t
 t/Genezzo-Contrib-Clustered6.t
+t/Genezzo-Contrib-Clustered7.t
 lib/Genezzo/Contrib/Clustered/Clustered.pm
 lib/Genezzo/Contrib/Clustered/ModPerlWrap.pm
 lib/Genezzo/Contrib/Clustered/PrepUndo.pm

@@ -1,4 +1,8 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.28  Tue Jan 03 23:30:00 2006
+	Modify ModPerlWrap to run better when preloaded with PerlModule.
+	Added use test case for ModPerlWrap.
+
 0.27  Tue Jan 03 09:00:00 2006
 	Modify ModPerlWrap to reset $processing and $restart on each
 	  PageStart()

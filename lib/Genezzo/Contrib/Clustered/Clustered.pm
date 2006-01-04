@@ -19,7 +19,7 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.27';
+our $VERSION = '0.28';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
@@ -1112,7 +1112,7 @@ sub _init
     }
 
     $cl_ctx->{proc_num} = $try_proc_num;
-    print STDERR "Genezzo::Contrib::Clustered Assigned Process Number = $try_proc_num\n";
+    print STDERR "Genezzo::Contrib::Clustered Assigned Process Number = $try_proc_num to OS process $$\n";
  
     $cl_ctx->{proc_state_blocknum} = 
 	$cl_ctx->{proc_num} + 1;  # 1 for undoHeader
