@@ -30,16 +30,18 @@ our $processing = 0;
 our $need_restart = 0;
 
 sub restart_exit {
-    print STDERR "\nExiting on restart_exit\n";
+    print STDERR "\n$$ Exiting on restart_exit\n";
     CORE::exit();
 }
 
 sub normal_exit {
+    # Clear first to avoid race condition.
+    $processing = 0;
+
     if($need_restart){
 	restart_exit();
     }
 
-    $processing = 0;
     # Apache remaps this to ModPerl::Util::exit()
     exit();
 }
@@ -94,7 +96,7 @@ sub sig_handler {
 	    $need_restart = 1;  # restart after processing completed
 	}else{
 	    # message print may not be signal-safe.
-	    print STDERR "\nExiting immediately due to lock request\n";
+	    print STDERR "\n$$ Exiting immediately due to lock request\n";
 	    # restart_exit doesn't work.  WHY???
 	    # restart_exit();     # restart now
 	    CORE::exit();
