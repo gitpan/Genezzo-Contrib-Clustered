@@ -129,7 +129,7 @@ __DATA__
 
 =head1 NAME
 
-Genezzo::Contrib::Clustered::GLock::GLockDLM - OpenDLM locking implementation for Genezzo
+Genezzo::Contrib::Clustered::GLock::GLockUR - Unix record locking implementation for Genezzo
 
 =head1 SYNOPSIS
 
@@ -139,7 +139,7 @@ Genezzo::Contrib::Clustered::GLock::GLockDLM - OpenDLM locking implementation fo
 
 =head1 DESCRIPTION
 
-Provides Perl wrappers to basic OpenDLM C functions.
+Provides Perl wrappers to basic Unix record fcntl C functions.
 
 =head1 FUNCTIONS
 
@@ -173,7 +173,7 @@ ur_lock, ur_promote, ur_unlock
 
 =head1 LIMITATIONS
 
-Relies on Perl Inline::C module.  Requires OpenDLM be installed.
+Relies on Perl Inline::C module.
 Currently terminates program when deadlock detected.
 
 Inline code is installed in directory /Inline, so it can be used with Apache.
@@ -181,10 +181,6 @@ Inline code is installed in directory /Inline, so it can be used with Apache.
 =head1 AUTHOR
 
 Eric Rollins, rollins@acm.org
-
-=head1 SEE ALSO
-
-L<http://opendlm.sourceforge.net/docs.php>.
 
 Copyright (c) 2005 Eric Rollins.  All rights reserved.
 

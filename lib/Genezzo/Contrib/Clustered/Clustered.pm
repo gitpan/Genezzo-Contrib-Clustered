@@ -19,7 +19,7 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.30';
+our $VERSION = '0.31';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;

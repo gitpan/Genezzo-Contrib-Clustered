@@ -1,4 +1,7 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.31  Sun Jan 15 01:00:00 2006
+	POD doc fixes.
+
 0.30  Sat Jan 14 23:00:00 2006
 	Added new locking module GLockUR, based on Unix Record locking.
 	Works on OS X, EXCEPT processes exit immediately after 
