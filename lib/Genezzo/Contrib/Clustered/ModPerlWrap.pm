@@ -121,7 +121,7 @@ sub Connect {
     # Perl "safe" signals prevent signals from being recd during Apache 
     # event loop.
     #$SIG{USR2} = \&sig_handler;
-    POSIX::sigaction(SIGUSR2,
+    POSIX::sigaction(POSIX::SIGUSR2,
                      POSIX::SigAction->new(\&sig_handler))
 		     or die "Error setting SIGUSR2 handler: $!\n";
 

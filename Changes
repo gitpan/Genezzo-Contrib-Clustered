@@ -1,4 +1,11 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.30  Sat Jan 14 23:00:00 2006
+	Added new locking module GLockUR, based on Unix Record locking.
+	Works on OS X, EXCEPT processes exit immediately after 
+	  signal handlers are run (why?)
+	Also on OS X need to add to httpd.conf
+	  PerlHeaderParserHandler "sub { tie *STDOUT, 'Apache' unless tied *STDOUT; }"
+
 0.29  Tue Jan 10 20:30:00 2006
 	Fix race condition in ModPerlWrap.
 

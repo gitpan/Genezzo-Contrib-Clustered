@@ -13,15 +13,18 @@ use warnings;
 
 use Genezzo::Util;
 
-our $LOCKER = 1;    # IPC::Locker
-our $DLM =    2;    # opendlm
-our $NONE =   3;    # no locking (still error check)
-our $IMPL = $NONE;  # this should be $NONE in distribution
+our $LOCKER =   1;    # IPC::Locker
+our $DLM =      2;    # opendlm
+our $NONE =     3;    # no locking (still error check)
+our $UR =       4;    # UNIX fcntl record locking
+our $IMPL = $NONE;      # this should be $NONE in distribution
 
 if($IMPL == $LOCKER){
   require IPC::Locker;
 }elsif($IMPL == $DLM){
   require Genezzo::Contrib::Clustered::GLock::GLockDLM;
+}elsif($IMPL == $UR){
+  require Genezzo::Contrib::Clustered::GLock::GLockUR;
 }
 
 # options lock:  lockName
@@ -81,6 +84,17 @@ sub lock{
     $self->{impl} = $l;
     $self->{shared} = $shared;
     return $l;
+  }elsif($IMPL == $UR){
+    my $l = Genezzo::Contrib::Clustered::GLock::GLockUR::ur_lock(
+        $self->{lock},$shared,$self->{block});
+
+    if($l == 0){
+      $l = undef;
+    }
+
+    $self->{impl} = $l;
+    $self->{shared} = $shared;
+    return $l;
   }else{
     $self->{shared} = $shared;
     return 1;
@@ -105,6 +119,9 @@ sub unlock {
     $l->unlock();
   }elsif($IMPL == $DLM){
     my $r = Genezzo::Contrib::Clustered::GLock::GLockDLM::dlm_unlock(
+        $self->{impl});
+  }elsif($IMPL == $UR){
+    my $r = Genezzo::Contrib::Clustered::GLock::GLockUR::ur_unlock(
         $self->{impl});
   }else{
   }
@@ -131,6 +148,15 @@ sub promote {
     return $l;
   }elsif ($IMPL == $DLM){
     my $l = Genezzo::Contrib::Clustered::GLock::GLockDLM::dlm_promote(
+        $self->{lock},$self->{impl},$self->{block});
+    if($l == 0){ 
+      $l = undef;
+    }
+
+    $self->{"shared"} = 0;
+    return $l;
+  }elsif ($IMPL == $UR){
+    my $l = Genezzo::Contrib::Clustered::GLock::GLockUR::ur_promote(
         $self->{lock},$self->{impl},$self->{block});
     if($l == 0){ 
       $l = undef;
@@ -172,6 +198,15 @@ sub demote {
 
     $self->{"shared"} = 1;
     return $l;
+  }elsif ($IMPL == $UR){
+    my $l = Genezzo::Contrib::Clustered::GLock::GLockUR::ur_demote(
+        $self->{lock},$self->{impl},$self->{block});
+    if($l == 0){ 
+      $l = undef;
+    }
+
+    $self->{"shared"} = 1;
+    return $l;
   }else{
     $self->{"shared"} = 1;
     return 1;
@@ -190,6 +225,8 @@ sub ast_poll {
     return 0;
   }elsif ($IMPL == $DLM){
     return Genezzo::Contrib::Clustered::GLock::GLockDLM::dlm_ast_poll();
+  }elsif ($IMPL == $UR){
+    return 1;  # assume notification only sent when restart is needed
   }else{
     return 0;
   }

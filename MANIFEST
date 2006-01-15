@@ -23,5 +23,6 @@ lib/Genezzo/Contrib/Clustered/genloopclient.pl
 lib/Genezzo/Contrib/Clustered/genezzo_form.pl
 lib/Genezzo/Contrib/Clustered/GLock/GLock.pm
 lib/Genezzo/Contrib/Clustered/GLock/GLockDLM.pm
+lib/Genezzo/Contrib/Clustered/GLock/GLockUR.pm
 lib/Genezzo/Contrib/Clustered/GLock/GTXLock.pm
 META.yml                                 Module meta-data (added by MakeMaker)
