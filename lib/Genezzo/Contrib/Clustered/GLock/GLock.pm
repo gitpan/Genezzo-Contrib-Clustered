@@ -259,7 +259,7 @@ Genezzo::Contrib::Clustered::GLock::GLock - Generic locking for Genezzo
 
 =head1 DESCRIPTION
 
-Basic locking for Genezzo.  Available implementations include NONE and OpenDLM.
+Basic locking for Genezzo.  Available implementations include None (default), Unix Record fcntl, and OpenDLM.  None is acceptable when only a single process accesses the database.  Unix Record should be used when multiple proccesses on a single machine access the database.  DLM is required when processes on multiple machines access the database.
 
 =head1 FUNCTIONS
 
@@ -297,6 +297,8 @@ Returns 1 if recent asyncronous request for lock held by process.  0 otherwise.
 
 Edit $IMPL to choose implementation.  This will eventually be configured
 from somewhere else.
+
+IPC::Locker implementation is not currently being maintained or tested.
 
 =head1 AUTHOR
 

@@ -110,17 +110,15 @@ sub ur_set_notify()
     return 1;
 }
 
-sub dummy_sig_handler {
-}
-
 BEGIN
 {
     print STDERR "Genezzo::Contrib::Clustered::GLock::GLockUR installed\n";
 
     # By default avoid dying.  Real handler can be registered later.
-    POSIX::sigaction(POSIX::SIGUSR2,
-                     POSIX::SigAction->new(\&dummy_sig_handler))
-		     or die "Error setting SIGUSR2 handler: $!\n";
+    my $sigset = POSIX::SigSet->new(POSIX::SIGUSR2);
+    my $old_sigset = POSIX::SigSet->new;
+    POSIX::sigprocmask(POSIX::SIG_BLOCK, $sigset, $old_sigset)
+		     or die "Error blocking SIGUSR2: $!\n";
 }
 
 1;
@@ -177,6 +175,12 @@ Relies on Perl Inline::C module.
 Currently terminates program when deadlock detected.
 
 Inline code is installed in directory /Inline, so it can be used with Apache.
+
+A file /tmp/genezzo.lock is created.  It must be writeable by the accessing
+processes.  The undo file should probably be used for locking instead.
+
+All processes must be owned by the same user; otherwise kill SIGUSR2
+signals will be blocked.
 
 =head1 AUTHOR
 

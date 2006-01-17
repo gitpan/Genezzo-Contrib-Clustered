@@ -26,21 +26,18 @@ our $dbh;
 our $query_num = 0;
 our $dbi_gzerr;
 
-our $processing = 0;
-our $need_restart = 0;
-
-sub restart_exit {
-    print STDERR "\n$$ Exiting on restart_exit\n";
-    CORE::exit();
+sub entry {
+    my $sigset = POSIX::SigSet->new(POSIX::SIGUSR2);
+    my $old_sigset = POSIX::SigSet->new;
+    POSIX::sigprocmask(POSIX::SIG_BLOCK, $sigset, $old_sigset)
+		     or die "Error blocking SIGUSR2: $!\n";
 }
 
 sub normal_exit {
-    # Clear first to avoid race condition.
-    $processing = 0;
-
-    if($need_restart){
-	restart_exit();
-    }
+    my $sigset = POSIX::SigSet->new(POSIX::SIGUSR2);
+    my $old_sigset = POSIX::SigSet->new;
+    POSIX::sigprocmask(POSIX::SIG_UNBLOCK, $sigset, $old_sigset)
+		     or die "Error unblocking SIGUSR2: $!\n";
 
     # Apache remaps this to ModPerl::Util::exit()
     exit();
@@ -92,15 +89,9 @@ sub return_error
 
 sub sig_handler {
     if(Genezzo::Contrib::Clustered::GLock::GLock::ast_poll()){
-	if($processing){
-	    $need_restart = 1;  # restart after processing completed
-	}else{
-	    # message print may not be signal-safe.
-	    print STDERR "\n$$ Exiting immediately due to lock request\n";
-	    # restart_exit doesn't work.  WHY???
-	    # restart_exit();     # restart now
-	    CORE::exit();
-	}
+	# message print may not be signal-safe.
+	print STDERR "\n$$ Exiting immediately due to lock request\n";
+	CORE::exit();
     }
 }
 
@@ -111,8 +102,7 @@ sub Connect {
     my ($gnz_home) = @_;
 
     # also covered in StartPage()
-    $processing = 1;
-    $need_restart = 0;
+    entry();
 
     if(defined($dbh)){
 	return;  # already connected
@@ -121,9 +111,10 @@ sub Connect {
     # Perl "safe" signals prevent signals from being recd during Apache 
     # event loop.
     #$SIG{USR2} = \&sig_handler;
-    POSIX::sigaction(POSIX::SIGUSR2,
-                     POSIX::SigAction->new(\&sig_handler))
-		     or die "Error setting SIGUSR2 handler: $!\n";
+    my $sigActionObj  =POSIX::SigAction->new(\&sig_handler);
+    $sigActionObj->flags(&POSIX::SA_RESTART);
+    POSIX::sigaction(POSIX::SIGUSR2,$sigActionObj)                     
+	or die "Error setting SIGUSR2 handler: $!\n";
 
     Genezzo::Contrib::Clustered::GLock::GLock::set_notify();
 
@@ -163,9 +154,7 @@ sub PrintForm {
 }
 
 sub StartPage {
-    $processing = 1;
-    $need_restart = 0;
-
+    entry();
     print "Content-type: text/xml\n\n";
     print '<?xml version="1.0" encoding="iso-8859-1"?>';
     print "\n";

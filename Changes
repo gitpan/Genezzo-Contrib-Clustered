@@ -1,4 +1,9 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.32  Mon Jan 16 23:00:00 2006
+	Revised SIGUSR2 handling in GLockUR and ModPerlWrap.
+	OS X 10.3.9 kill SIGUSR2 handling is sometimes delayed till 
+	  next request (WHY?).
+
 0.31  Sun Jan 15 01:00:00 2006
 	POD doc fixes.
 
