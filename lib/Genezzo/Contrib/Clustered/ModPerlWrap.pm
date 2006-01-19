@@ -320,6 +320,10 @@ none
 
 =head1 LIMITATIONS
 
+Requires Apache 2 and Perl 5.8.4+.  On Apache 1.3 SIGUSR2 delivery is 
+often delayed.
+Note the standard web server on Mac OS X is Apache 1.3.
+
 This is pre-alpha software; don't use it to store any data you hope
 to see again!
 
