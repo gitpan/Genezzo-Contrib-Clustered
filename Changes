@@ -1,4 +1,8 @@
 Revision history for Perl extension Genezzo::Contrib::Clustered.
+0.43  Mon Oct 01 01:00:00 2007
+	Move Genezzo/Contrib/Clustered/Clustered.pm up one level.
+	Fix Genezzo-Contrib-Clustered.t by adding removal of trailing semi in SQL.
+
 0.33  Wed Jan 18 23:00:00 2006
 	Revised POD in ModPerlWrap.  Requires Apache 2.  Signal handling
 	  problem on Mac OS X is due to Apache 1.3.

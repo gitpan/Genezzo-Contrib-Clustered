@@ -6,7 +6,7 @@
 # change 'tests => 1' to 'tests => last_test_to_print';
 
 use Test::More tests => 6;
-BEGIN { use_ok('Genezzo::Contrib::Clustered::Clustered') };
+BEGIN { use_ok('Genezzo::Contrib::Clustered') };
 BEGIN { use_ok('Genezzo::Contrib::Clustered::PrepUndo') };
 
 #########################
@@ -33,7 +33,7 @@ my $gnz_home = File::Spec->catdir("t", "gnz_home");
 
 {
     # sets PID so different process will recover block
-    $Genezzo::Contrib::Clustered::Clustered::starting_pid = 2;
+    $Genezzo::Contrib::Clustered::starting_pid = 2;
 
     use Genezzo::Util;
 

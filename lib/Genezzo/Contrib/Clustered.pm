@@ -3,7 +3,7 @@
 #
 #
 
-package Genezzo::Contrib::Clustered::Clustered;
+package Genezzo::Contrib::Clustered;
 
 #use 5.008004;
 use strict;
@@ -19,7 +19,7 @@ use Genezzo::Block::RDBlock;
 use warnings::register;
 use Carp qw(:DEFAULT cluck);
 
-our $VERSION = '0.33';
+our $VERSION = '0.34';
 
 our $ReadBlock_Hook;
 our $DirtyBlock_Hook;
@@ -1243,7 +1243,7 @@ __END__
 
 =head1 NAME
 
-Genezzo::Contrib::Clustered::Clustered - Shared data cluster support for Genezzo
+Genezzo::Contrib::Clustered - Shared data cluster support for Genezzo
 
 =head1 SYNOPSIS
 

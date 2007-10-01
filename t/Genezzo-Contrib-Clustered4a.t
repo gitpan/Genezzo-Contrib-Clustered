@@ -6,7 +6,7 @@
 # change 'tests => 1' to 'tests => last_test_to_print';
 
 use Test::More tests => 5;
-BEGIN { use_ok('Genezzo::Contrib::Clustered::Clustered') };
+BEGIN { use_ok('Genezzo::Contrib::Clustered') };
 BEGIN { use_ok('Genezzo::Contrib::Clustered::PrepUndo') };
 
 #########################

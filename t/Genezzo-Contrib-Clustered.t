@@ -6,7 +6,7 @@
 # change 'tests => 1' to 'tests => last_test_to_print';
 
 use Test::More tests => 23;
-BEGIN { use_ok('Genezzo::Contrib::Clustered::Clustered') };
+BEGIN { use_ok('Genezzo::Contrib::Clustered') };
 BEGIN { use_ok('Genezzo::Contrib::Clustered::PrepUndo') };
 
 #########################
@@ -117,6 +117,8 @@ rmtree($gnz_home, 1, 1);
         
         next
             unless (length($lin));
+
+        $lin =~ s/;(\s*)$//; # remove trailing semi
         
         fail ("could not create table havok")
             unless ($dbh->do($lin));
@@ -144,6 +146,8 @@ rmtree($gnz_home, 1, 1);
         
         next
             unless (length($lin));
+
+        $lin =~ s/;(\s*)$//; # remove trailing semi
         
         fail ("could not create table syshook")
             unless ($dbh->do($lin));
@@ -226,6 +230,8 @@ rmtree($gnz_home, 1, 1);
         
         next
             unless (length($lin));
+
+        $lin =~ s/;(\s*)$//; # remove trailing semi
         
         print $lin, "\n";
 

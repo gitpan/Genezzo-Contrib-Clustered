@@ -8,7 +8,7 @@ use strict;
 use warnings;
 
 use Genezzo::GenDBI;
-use Genezzo::Contrib::Clustered::Clustered;
+use Genezzo::Contrib::Clustered;
 use Genezzo::Contrib::Clustered::GLock::GLock;
 
 my $dbh;

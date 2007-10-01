@@ -6,7 +6,7 @@
 # change 'tests => 1' to 'tests => last_test_to_print';
 
 use Test::More tests => 7;
-BEGIN { use_ok('Genezzo::Contrib::Clustered::Clustered') };
+BEGIN { use_ok('Genezzo::Contrib::Clustered') };
 BEGIN { use_ok('Genezzo::Contrib::Clustered::PrepUndo') };
 
 #########################
@@ -33,7 +33,7 @@ my $gnz_home = File::Spec->catdir("t", "gnz_home");
 #mkpath($gnz_home, 1, 0755);
 
 {
-    $Genezzo::Contrib::Clustered::Clustered::pad_undo = 1;
+    $Genezzo::Contrib::Clustered::pad_undo = 1;
 
     use Genezzo::Util;
 
